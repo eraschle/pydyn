@@ -115,26 +115,6 @@ If AS-STRING is non-nil value contain with surrounding \"."
   (json-encode-string code))
 
 
-(defvar :node-id (make-symbol "node-id")
-  "NODE-ID of node.")
-(defvar :node-info (make-symbol "node-info")
-  "NODE-ID of node.")
-(defvar :name (make-symbol "name")
-  "NAME of node.")
-(defvar :code (make-symbol "code")
-  "CODE string in node.")
-(defvar :code-line (make-symbol "code-line")
-  "LINE NUMBER of code in node.")
-(defvar :engine (make-symbol "engine")
-  "ENGINE for code in node.")
-(defvar :node-start (make-symbol "node-start")
-  "START LINE NUMBER of NODE in Dynamo document.")
-(defvar :node-end (make-symbol "node-end")
-  "END LINE NUMBER of NODE in Dynamo document.")
-(defvar :path (make-symbol "path")
-  "Dynamo file PATH of node.")
-
-
 (defun pydyn--json-node-info-read ()
   "Return JSON-object at point or nil if an error occurs."
   (save-excursion
@@ -254,7 +234,6 @@ If AS-STRING is non-nil value contain with surrounding \"."
 
 (defun pydyn--json-node-infos (file-path)
   "Return PLIST of all python nodes in FILE-PATH."
-  (pydyn-is-dynamo-or-error file-path)
   (unless buffer-cache
     (setq buffer-cache (make-hash-table)))
   ;; (unless (assoc file-path buffer-cache)

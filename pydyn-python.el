@@ -458,7 +458,7 @@ Return point of match or nil."
 (defun pydyn-python-goto-dynamo-node ()
   "Goto to source file and try to select code at point in source."
   (interactive)
-  (pydyn-is-python-export-or-error)
+  (pydyn-dynamo-exists-or-error node-path)
   (pydyn-goto-code (pydyn-convert-to-dynamo
                     (pydyn-current-line))))
 

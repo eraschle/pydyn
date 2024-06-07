@@ -63,6 +63,18 @@
   :group 'pydyn)
 
 
+(defcustom pydyn-source-root-alist nil
+  "Source root path of Dynamo library."
+  :type 'list
+  :group 'pydyn)
+
+
+(defcustom pydyn-source-is-file-alist nil
+  "Source root path of Dynamo library."
+  :type 'list
+  :group 'pydyn)
+
+
 (defcustom pydyn-export-root nil
   "Export root path of Python files."
   :type 'string
@@ -79,9 +91,60 @@
   (s-starts-with? pydyn-export-root path))
 
 
+(defun pydyn-source-file-path ()
+  "Return path to saved source root paths."
+  (concat user-emacs-directory "pydyn/source"))
+
+
+(defun pydyn--source-file-insert-coding (coding)
+  "Insert CODING symbol of the coding-system in which the file is encoded."
+  (if (memq (coding-system-base coding) '(undecided prefer-utf-8))
+      (setq coding 'utf-8-emacs))
+  (insert (format ";;;; -*- coding: %S; mode: lisp-data -*-\n"
+                  (coding-system-base coding))))
+
+
+(defun pydyn-source-file-write ()
+  "Write `pydyn-source-root-alist' to file."
+  (let* ((file (pydyn-source-file-path))
+         (reporter (make-progress-reporter
+                    (format "Saving pydyn source root to file %s..." file))))
+    (with-current-buffer (get-buffer-create " *Bookmarks*")
+      (goto-char (point-min))
+      (delete-region (point-min) (point-max))
+      (let ((coding-system-for-write
+             (or coding-system-for-write 'utf-8-emacs))
+            (print-length nil)
+            (print-level nil)
+            (print-circle t))
+        (dolist (root pydyn-source-root-alist)
+          (pp root (current-buffer)))
+        (with-coding-priority '(utf-8-emacs)
+          (setq coding-system-for-write (select-safe-coding-system
+                                         (point-min) (point-max)
+                                         (list t coding-system-for-write))))
+        (goto-char (point-min))
+        (pydyn--source-file-insert-coding coding-system-for-write)
+        (condition-case nil
+            (write-file file)
+          (file-error (message "Can't write %s" file)))
+        (kill-buffer (current-buffer))
+        (progress-reporter-done reporter)))))
+
+
+(defun pydyn-source-save-file ()
+
+  )
+
+
 (defun pydyn-is-source? (path)
   "Return non-nil if PATH is an `pydyn-export-root'."
-  (s-starts-with? pydyn-source-root path))
+  (unless pydyn-source-root-alist
+    (user-error "No source root exists"))
+  (unless pydyn-source-root-alist
+    (user-error "No source root exists"))
+  (seq-some (lambda (src-path) (s-starts-with? src-path path))
+            pydyn-source-root-alist))
 
 
 (defun pydyn--path-is-ext? (file-path extensions)
@@ -108,8 +171,9 @@
 
 (defun pydyn-is-dynamo? (&optional file-path)
   "Return non-nil when FILE-PATH is Dynamo SCRIPT or CUSTOM NODE."
-  (or (pydyn-dynamo-is-script? file-path)
-      (pydyn-dynamo-is-custom? file-path)))
+  (and (file-exists-p (pydyn-path-get file-path))
+       (or (pydyn-dynamo-is-script? file-path)
+           (pydyn-dynamo-is-custom? file-path))))
 
 
 ;;;###autoload
@@ -123,7 +187,23 @@
 (defun pydyn-is-dynamo-source? (&optional file-path)
   "Return non-nil when FILE-PATH is inside of `pydyn-source-root'."
   (let ((file-path (pydyn-path-get file-path)))
-    (and (pydyn-is-source? file-path) (pydyn-is-dynamo? file-path))))
+    (and (pydyn-is-source? file-path)
+         (pydyn-is-dynamo? file-path))))
+
+
+(defun pydyn-dynamo-file-exists-p (file-path)
+  "Return non-nil when FILE-PATH is dynamo file and exist."
+  (let ((file-path (pydyn-path-get file-path)))
+    (and (file-exists-p file-path)
+         (pydyn-is-dynamo? file-path))))
+
+
+;;;###autoload
+(defun pydyn-dynamo-exists-or-error (file-path)
+  "Throw user error if FILE-PATH is not a subpath of `pydyn-source-root'."
+  (unless (pydyn-dynamo-file-exists-p file-path)
+    (user-error "%s does not exists or is NOT a Dynamo file"
+                (file-name-base file-path))))
 
 
 ;;;###autoload
@@ -151,11 +231,26 @@
       (user-error "%s is NOT a Python file" (file-name-base file-path)))))
 
 
+(defun pydyn--buffer-for-get (file-path)
+  "Return buffer for FILE-PATH. Either `current-buffer' or new buffer."
+  (if (equal buffer-file-name file-path)
+      (current-buffer)
+    (pydyn-buffer-by file-path)))
+
+
+(defun pydyn--local-variable-set-p (file-path)
+  "Return non-nil when all buffer local variables are set.
+Unless FILE-PATH is `current-buffer', new buffer will be created."
+  (let ((local-vars (list 'node-uuid 'node-engine 'node-path))
+        (buffer (pydyn--buffer-for-get file-path)))
+    (seq-every-p (lambda (var) (buffer-local-boundp var buffer)) local-vars)))
+
+
 ;;;###autoload
 (defun pydyn-is-python-export? (&optional file-path)
-  "Return non-nil when FILE-PATH is inside of `pydyn-export-root'."
+  "Return non-nil when FILE-PATH is python file and local variables are set."
   (let ((file-path (pydyn-path-get file-path)))
-    (and (pydyn-is-export? file-path)
+    (and (pydyn--local-variable-set-p file-path)
          (pydyn-is-python? file-path))))
 
 
@@ -186,15 +281,12 @@
           (file-name-base path) "/"))
 
 
-(defun pydyn--path-export-folder-for-export (path)
-  "Return export path with added file-name as directory for PATH."
-  (if (file-directory-p path) path (file-name-directory path)))
-
-
 (defun pydyn--path-export-folder-for (file-path)
   "Return export path for FILE-PATH."
   (if (pydyn-is-export? file-path)
-      (pydyn--path-export-folder-for-export file-path)
+      (if (file-directory-p file-path)
+          file-path
+        (file-name-directory file-path))
     (pydyn--path-export-folder-for-source file-path)))
 
 
@@ -207,10 +299,14 @@
 
 (defun pydyn-dynamo-files-in (directory &optional recursive)
   "Return Dynamo files in DIRECTORY, RECURSIVE search if non-nil."
-  (pydyn--files-in-directory directory
-                             (list pydyn-dynamo-custom-ext
-                                   pydyn-dynamo-script-ext)
-                             recursive))
+  (let ((files (pydyn--files-in-directory directory
+                                          (list pydyn-dynamo-custom-ext
+                                                pydyn-dynamo-script-ext)
+                                          recursive)))
+    (when pydyn-source-is-file-alist
+      (dolist (func pydyn-source-is-file-alist)
+        (setq files (apply func files))))
+    files))
 
 
 (defun pydyn-path-export-folder (node-path)
