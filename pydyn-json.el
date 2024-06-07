@@ -254,7 +254,6 @@ If AS-STRING is non-nil value contain with surrounding \"."
 
 (defun pydyn--json-node-infos (file-path)
   "Return PLIST of all python nodes in FILE-PATH."
-  (pydyn-is-dynamo-or-error file-path)
   (unless buffer-cache
     (setq buffer-cache (make-hash-table)))
   ;; (unless (assoc file-path buffer-cache)

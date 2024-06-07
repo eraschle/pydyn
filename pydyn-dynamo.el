@@ -80,7 +80,6 @@
 
 (defun pydyn-dynamo--node-info-or-error ()
   "Switch to Python file of code at current point if exists."
-  (pydyn-is-dynamo-or-error)
   (let ((node-info (pydyn-python-node-get)))
     (unless node-info
       (user-error "Current point is NOT inside a PYTHON node!!!"))
@@ -91,6 +90,7 @@
 (defun pydyn-dynamo-goto-python ()
   "Switch to Python file of code at current point if exists."
   (interactive)
+  (pydyn-is-dynamo-or-error)
   (let ((path (pydyn-export-path
                (pydyn-dynamo--node-info-or-error))))
     (unless (file-exists-p path)
@@ -121,6 +121,7 @@
 (defun pydyn-dynamo-at-point-to-python (switch-or-kill)
   "Export python code at point and SWITCH-OR-KILL export buffer."
   (interactive (list (pydyn-choose-switch-or-kill "Python")))
+  (pydyn-is-dynamo-or-error)
   (unwind-protect
       (let ((node-info (pydyn-dynamo--node-info-or-error))
             (switch (pydyn-is-switch switch-or-kill))
