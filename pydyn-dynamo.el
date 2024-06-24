@@ -140,11 +140,13 @@
 ;;;###autoload
 (defun pydyn-dynamo-script-to-python (file-path switch-or-kill)
   "Export python node in FILE-PATH and SWITCH-OR-KILL to export buffer."
-  (interactive (list (if (pydyn-is-dynamo-source? buffer-file-name)
+  (interactive (list (if (pydyn-is-dynamo? buffer-file-name)
                          (buffer-file-name)
                        (pydyn-dynamo-select-file))
                      (pydyn-choose-switch-or-kill "Python")))
   (pydyn-is-dynamo-or-error file-path)
+  (unless (pydyn-is-source? file-path)
+    (pydyn-dynamo-add-source-root-path file-path))
   (unwind-protect
       (progn
         (pydyn-disable-lsp-clients)
@@ -171,10 +173,11 @@
 (defun pydyn-dynamo-folder-to-python (&optional directory switch-or-kill)
   "Export all python nodes of Dynamo files in DIRECTORY.
 SWITCH-OR-KILL last export buffer afterwards."
-  (interactive (list (read-directory-name
-                      "Export Python code to directory? "
-                      pydyn-source-root)
+  (interactive (list (read-directory-name "Export Python of directory? "
+                                          default-directory)
                      (pydyn-choose-switch-or-kill "Python")))
+  (unless (pydyn-is-source? directory)
+    (pydyn-dynamo-add-source-root-path directory))
   (unwind-protect
       (let ((buffer nil)
             (switch (pydyn-is-switch switch-or-kill))
@@ -257,8 +260,8 @@ SWITCH-OR-KILL last export buffer afterwards."
 (defun pydyn-dynamo-clean-orphan-code-folder (&optional directory)
   "Delete all python files of existing nodes from Dynamo files in DIRECTORY."
   (interactive (list (read-directory-name
-                      "Delete python files without node in? "
-                      pydyn-source-root)))
+                      "Delete orphan python code from dynamo files in? "
+                      default-directory)))
   (unwind-protect
       (progn
         (pydyn-disable-lsp-clients)
@@ -311,7 +314,11 @@ SWITCH-OR-KILL last export buffer afterwards."
   (when (and pydyn-dynamo-mode
              (pydyn-not-processing?))
     (pydyn-dynamo-indent-width-setup)
-    (message "ELYO DYNAMO")))
+    (message "ELYO DYNAMO"))
+
+  (if pydyn-dynamo-mode
+      (pydyn-source-config-load)
+    (pydyn-source-config-write)))
 
 
 ;;;###autoload
@@ -335,8 +342,7 @@ SWITCH-OR-KILL last export buffer afterwards."
   "Activate and config `pydyn-dynamo-mode' if possible."
   (pydyn-dynamo-json-config)
   (when (and (pydyn-is-json-mode?)
-             (pydyn-is-dynamo?)
-             (pydyn-is-dynamo-source?))
+             (pydyn-is-dynamo?))
     (pydyn-dynamo-mode 1)))
 
 

@@ -139,34 +139,35 @@ WITH-PROPERTIES control if the substring contains properties or not."
       (end-of-line))))
 
 
-(defun pydyn--name-with-path (path &optional prefix)
-  "Return list with PATH without PREFIX if non-nil otherwise file name and PATH."
-  (list (if prefix
-            (string-remove-prefix prefix path)
-          (format "%s.%s"
-                  (file-name-base path)
-                  (file-name-extension path)))
-        path))
+(defun pydyn--remove-prefixes (path prefixes)
+  "Return PATH without any PREFIXES."
+  (dolist (prefix (ensure-list prefixes))
+    (when (string-prefix-p prefix path)
+      (setq path (string-remove-prefix prefix path))))
+  path)
 
 
-(defun pydyn--name-with-path-list (paths &optional prefix)
-  "Return list with PREFIX free name and path of PATHS."
-  (seq-map (lambda (path)
-             (pydyn--name-with-path path prefix))
-           paths))
+(defun pydyn--selection-for-path (path prefixes)
+  "Return list with PATH without PREFIXES and PATH."
+  (list (pydyn--remove-prefixes path prefixes) path))
 
 
-(defun pydyn-selection-get (paths prompt &optional prefix)
-  "Return user path selection from PATHS. PROMPT is show to user.
-PREFIX will be removed from PATHS."
-  (let* ((name-and-path (pydyn--name-with-path-list (-flatten paths) prefix))
-         (selected (completing-read prompt name-and-path nil t))
+(defun pydyn--select-list-for (paths prefixes)
+  "Return list with PREFIXES free name and path of PATHS."
+  (seq-map (lambda (path) (pydyn--selection-for-path path prefixes))
+           (seq-sort #'string-lessp paths)))
+
+
+(defun pydyn-selection-get (paths prompt prefixes)
+  "Return path selected by the user with PROMPT displayed.
+PREFIXES is removed in PATHS displayed to user."
+  (let* ((select-list (pydyn--select-list-for (-flatten paths) prefixes))
          (completions-format 'vertical)
-         (completions-sort 'alphabetical))
-    (catch 'found-it
-      (dolist (name-path name-and-path)
-        (when (string-equal (seq-first name-path) selected)
-          (throw 'found-it (seq-elt name-path 1)))))))
+         (completions-sort 'alphabetical)
+         (selected (completing-read prompt select-list nil t)))
+    (seq-find (lambda (name-n-path)
+                (equal (seq-first name-n-path) selected))
+              select-list)))
 
 
 (defun pydyn-choose-get (choose-list prompt &optional initial-input)

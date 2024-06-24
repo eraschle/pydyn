@@ -491,6 +491,12 @@ Return point of match or nil."
                        (pydyn-is-kill switch-or-kill))))
 
 
+(defun pydyn-python-to-dynamo-message (dyn-path)
+  "Show message for updated code in DYN-PATH."
+  (let ((root-path (or (pydyn-source-root-of dyn-path) "")))
+    (message "Dynamo %S updated" (string-remove-prefix root-path dyn-path))))
+
+
 ;;;###autoload
 (defun pydyn-python-to-dynamo-script (file-path switch-or-kill)
   "Replace code from FILE-PATH of all Dynamo nodes, SWITCH-OR-KILL buffer."
@@ -515,8 +521,7 @@ Return point of match or nil."
               (unless (equal buffer buffer-before)
                 (kill-buffer-if-not-modified buffer))))
           (pydyn-buffer-save dyn-path switch other-win kill)
-          (message "Dynamo '%s' updated" (string-remove-prefix
-                                          pydyn-source-root dyn-path))))
+          (pydyn-python-to-dynamo-message dyn-path)))
     (pydyn-enable-lsp-clients)))
 
 
@@ -540,14 +545,19 @@ Return point of match or nil."
                 (unless (or dyn-path (string-equal current-dyn dyn-path))
                   (when (and dyn-path (not (string-equal current-dyn dyn-path)))
                     (pydyn-buffer-save dyn-path nil t)
-                    (message "Dynamo '%s' updated"
-                             (string-remove-prefix
-                              pydyn-source-root dyn-path)))
+                    (pydyn-python-to-dynamo-message dyn-path))
                   (setq dyn-path current-dyn))
                 (when (not (equal buffer buffer-before))
                   (kill-buffer-if-not-modified buffer))))))
         (pydyn-buffer-save dyn-path switch other-win kill))
     (pydyn-enable-lsp-clients)))
+
+
+(defun pydyn-is-python-export-h ()
+  "Return non-nil when FILE-PATH is python file and local variables are set."
+  (if (pydyn-python-local-var-set-p buffer-file-name)
+      (pydyn-python-mode-on)
+    (pydyn-python-mode-off)))
 
 
 (define-minor-mode pydyn-python-mode
@@ -556,6 +566,7 @@ Return point of match or nil."
   :group 'pydyn
   :lighter " pydyn-python"
   :keymap pydyn-python-mode-map
+  (add-hook 'python-mode-local-vars-hook #'pydyn-is-python-export-h 99)
   (cond
    ((and pydyn-python-mode (pydyn-not-processing?))
     (pydyn-python-indent-width-setup)
@@ -567,7 +578,11 @@ Return point of match or nil."
     (message "CONVERT running"))
    (t
     (setq pydyn-python-mode nil)
-    (message "ELYO PYTHON off"))))
+    (message "ELYO PYTHON off")))
+
+  (if pydyn-python-mode
+      (pydyn-source-config-load)
+    (pydyn-source-config-write)))
 
 
 ;;;###autoload
