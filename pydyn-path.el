@@ -290,11 +290,18 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
     (pydyn--path-export-folder-for-source file-path)))
 
 
-(defun pydyn-python-files-in (node-path &optional recursive)
-  "Return python files in NODE-PATH, RECURSIVE search if non-nil."
-  (pydyn--files-in-directory (pydyn--path-export-folder-for node-path)
+(defun pydyn-python-files-in (path &optional recursive)
+  "Return python files in PATH, RECURSIVE search if non-nil."
+  (pydyn--files-in-directory (pydyn--path-export-folder-for path)
                              pydyn-python-extension
                              recursive))
+
+
+(defun pydyn-python-select-file ()
+  "Return selected dynamo file path by user."
+  (let ((files (pydyn-python-files-in pydyn-export-root t)))
+    (pydyn-selection-get files "Select Python file: "
+                         (list pydyn-export-root))))
 
 
 (defun pydyn-dynamo-files-in (directory &optional recursive)
@@ -307,6 +314,14 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
       (dolist (func pydyn-source-is-file-alist)
         (setq files (apply func files))))
     files))
+
+
+(defun pydyn-dynamo-select-file ()
+  "Return selected dynamo file path by user."
+  (let ((files (seq-map (lambda (source) (pydyn-dynamo-files-in source t))
+                        pydyn-source-root-alist)))
+    (pydyn-selection-get files "Select Dynamo file: "
+                         pydyn-source-root-alist)))
 
 
 (defun pydyn-path-export-folder (node-path)

@@ -496,8 +496,7 @@ Return point of match or nil."
   "Replace code from FILE-PATH of all Dynamo nodes, SWITCH-OR-KILL buffer."
   (interactive (list (if (pydyn-is-python-export? buffer-file-name)
                          (buffer-file-name)
-                       (pydyn-selection-get (pydyn-python-files-in pydyn-export-root t)
-                                            "Select python file: " pydyn-export-root))
+                       (pydyn-python-select-file))
                      (pydyn-choose-switch-or-kill "Dynamo")))
   (pydyn-is-python-export-or-error file-path)
   (unwind-protect

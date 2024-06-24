@@ -142,9 +142,7 @@
   "Export python node in FILE-PATH and SWITCH-OR-KILL to export buffer."
   (interactive (list (if (pydyn-is-dynamo-source? buffer-file-name)
                          (buffer-file-name)
-                       (pydyn-selection-get
-                        (pydyn-dynamo-files-in pydyn-source-root t)
-                        "Select Dynamo file:" pydyn-source-root))
+                       (pydyn-dynamo-select-file))
                      (pydyn-choose-switch-or-kill "Python")))
   (pydyn-is-dynamo-or-error file-path)
   (unwind-protect
@@ -161,6 +159,13 @@
               (pydyn-is-switch-other switch-or-kill))
       (pydyn-python-mode-on))))
 
+
+(defun pydyn-dynamo-folder-select ()
+  "Return folder with dynamo for export selected by the user."
+  (interactive)
+  (let ((source-root (completing-read "Select source-root: "
+                                      pydyn-source-root-alist nil t)))
+    (read-directory-name "Select directory: " source-root)))
 
 ;;;###autoload
 (defun pydyn-dynamo-folder-to-python (&optional directory switch-or-kill)
@@ -240,9 +245,7 @@ SWITCH-OR-KILL last export buffer afterwards."
 ;;;###autoload
 (defun pydyn-dynamo-clean-orphan-code-file (&optional file-path)
   "Delete python files of not existing nodes of Dynamo FILE-PATH."
-  (interactive (list (pydyn-selection-get
-                      (pydyn-dynamo-files-in pydyn-source-root t)
-                      "Select Dynamo file:" pydyn-source-root)))
+  (interactive (list (pydyn-dynamo-select-file)))
   (when (yes-or-no-p "Are you sure to delete python-files??")
     (unwind-protect
         (progn (pydyn-disable-lsp-clients)
