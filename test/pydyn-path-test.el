@@ -1,4 +1,4 @@
-;;; pydyn-path-test.el --- DOOM Dynamo package -*- lexical-binding: t; -*-
+;;; pydyn-path-test.el --- Test for pydyn-path -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2024 Erich Raschle
 ;; Permission is hereby granted, free of charge, to any person obtaining a copy

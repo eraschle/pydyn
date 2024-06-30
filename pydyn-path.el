@@ -57,14 +57,14 @@
   :group 'pydyn)
 
 
-(defcustom pydyn-source-root-alist nil
+(defcustom pydyn--source-config-alist nil
   "Source root path of Dynamo library."
   :type 'list
   :group 'pydyn)
 
 
-(defvar pydyn-source-root-alist-restored nil
-  "Prevent multiple restore of `pydyn-source-root-alist'.")
+(defvar pydyn-source-config-restored nil
+  "Prevent multiple restore of `pydyn--source-config-alist'.")
 
 
 (defcustom pydyn-source-is-file-alist nil
@@ -90,13 +90,19 @@
 
 
 (defun pydyn-path-get (&optional file-path)
-  "Return FILE-PATH buffer if non-nil, otherwise path of current buffer."
+  "Return FILE-PATH if non-nil, otherwise path of current buffer."
   (or file-path buffer-file-name))
 
 
-(defun pydyn-is-export? (path)
+(defun pydyn-is-export? (&optional path)
   "Return non-nil if PATH is an `pydyn-export-root'."
-  (s-starts-with? pydyn-export-root path))
+  (s-starts-with? (pydyn--dir-path-of pydyn-export-root)
+                  (pydyn--dir-path-of (pydyn-path-get path))))
+
+
+(defun pydyn-source-config-exists ()
+  "Return path to saved source root paths."
+  (file-exists-p pydyn-config-file-path))
 
 
 (defun pydyn-source-config-path ()
@@ -106,32 +112,58 @@
       (make-directory folder-path t))
     pydyn-config-file-path))
 
+(defun pydyn--dir-path-of (path)
+  "Return absolute PATH."
+  (cond ((string-prefix-p "~" path) (expand-file-name path))
+        ((not (file-directory-p path)) (file-name-parent-directory path))
+        ((not (directory-name-p path)) (file-name-as-directory path))
+        (t path)))
+
+(defun pydyn--config-path-get (config)
+  "Return source path of CONFIG."
+  (unless config
+    (setq config (list :path ""))
+    (message "Source root config was nil, set to empty path"))
+  (pydyn--dir-path-of (plist-get config :path)))
+
+
+(defun pydyn-remove-config-path (path)
+  "Return PATH without path of source config."
+  (let ((config (pydyn-source-config-of path)))
+    (string-remove-prefix (pydyn--config-path-get config)
+                          (pydyn--dir-path-of path))))
+
 
 (defun pydyn--source-config-insert-coding (coding)
   "Insert CODING symbol of the coding-system in which the file is encoded."
   (if (memq (coding-system-base coding) '(undecided prefer-utf-8))
       (setq coding 'utf-8-emacs))
-  (insert (format ";;;; -*- coding: %S; mode: lisp-data -*-\n"
+  (insert (format ";;;; -*- coding: %S; mode: lisp-data -*-\n\n"
                   (coding-system-base coding))))
 
 
+(defun pydyn--write-config-get (config)
+  "Return source root CONFIG in string format."
+  (format "%s, %s, %s, %s\n"
+          :path
+          (string-trim (pydyn--config-path-get config))
+          :name
+          (string-trim (plist-get config :name))))
+
+
 (defun pydyn-source-config-write ()
-  "Write `pydyn-source-root-alist' to file."
+  "Write `pydyn--source-config-alist' to file."
   (interactive)
-  (unless pydyn-source-root-alist
+  (unless pydyn--source-config-alist
     (user-error "No source root's to save"))
   (let ((file (pydyn-source-config-path)))
     (with-current-buffer (get-buffer-create pydyn-config-save-and-load-buffer)
       (goto-char (point-min))
       (delete-region (point-min) (point-max))
-      (let ((coding-system-for-write
-             (or coding-system-for-write 'utf-8-emacs))
-            (print-length nil)
-            (print-level nil)
-            (print-circle t))
-        (dolist (root pydyn-source-root-alist)
-          (pp root (current-buffer))
-          (insert "\n"))
+      (let ((coding-system-for-write (or coding-system-for-write
+                                         'utf-8-emacs)))
+        (dolist (root pydyn--source-config-alist)
+          (insert (pydyn--write-config-get root)))
         (with-coding-priority '(utf-8-emacs)
           (setq coding-system-for-write (select-safe-coding-system
                                          (point-min) (point-max)
@@ -144,79 +176,138 @@
         (kill-buffer (current-buffer))))))
 
 
-(defun pydyn--source-config-p (path source-paths)
-  "Return non-nil if PATH is a subpath of a path in SOURCE-PATHS."
-  (when (and (not (string-blank-p path))
-             (file-directory-p path))
-    (not (seq-some (lambda (src-path)
-                     (and (not (eq src-path path))
-                          (s-starts-with? src-path path)))
-                   source-paths))))
+(defun pydyn--set-absolute-path-in (config)
+  "Return CONFIG with absolute path."
+  (let ((path (pydyn--config-path-get config)))
+    (unless (equal path (plist-get config :path))
+      (setq config (plist-put config :path path))))
+  config)
 
 
-(defun pydyn--config-path (path)
-  "Return PATH to save in config file."
-  (if (and (file-name-absolute-p path)
-           (file-directory-p path))
-      path
-    (let ((default-directory (getenv "HOME")))
-      (file-name-as-directory (file-truename path)))))
+(defun pydyn--prepare-configs (configs)
+  "Return CONFIGS in config format."
+  (seq-map #'pydyn--set-absolute-path-in configs))
+
+(defun pydyn--config-same-path-p (config other)
+  "Return non-nil if path in CONFIG is equal to path in OTHER."
+  (equal (plist-get config :path)
+         (plist-get other :path)))
 
 
-(defun pydyn--prepare-paths (root-paths)
-  "Return ROOT-PATHS in config format."
-  (seq-map #'pydyn--config-path
-           (seq-filter
-            (lambda (path)
-              (pydyn--source-config-p path root-paths))
-            (ensure-list root-paths))))
+(defun pydyn--config-names (&optional configs)
+  "Return source names in CONFIGS or `pydyn--source-config-alist'."
+  (seq-map (lambda (config) (plist-get config :name))
+           (or configs pydyn--source-config-alist)))
 
 
-(defun pydyn--source-root-paths (root-paths)
-  "Return ROOT-PATHS in config format."
-  (seq-uniq (append (pydyn--prepare-paths root-paths)
-                    (pydyn--prepare-paths pydyn-source-root-alist))))
+(defun pydyn--source-config-paths ()
+  "Return source paths of `pydyn--source-config-alist'."
+  (seq-map #'pydyn--config-path-get pydyn--source-config-alist))
 
 
-(defun pydyn--append-and-clean-source-paths (root-paths)
-  "Return paths without children path.
-Checked paths a list of ROOT-PATHS and `pydyn-source-root-alist'."
-  (sort (pydyn--source-root-paths root-paths) #'string-lessp))
+(defun pydyn--config-path-exists (config)
+  "Return non-nil if path in CONFIG exists in `pydyn--source-config-alist'."
+  (seq-contains-p pydyn--source-config-alist
+                  config
+                  #'pydyn--config-same-path-p))
 
 
-(defun pydyn--exist-in-source-roots (root-paths)
-  "Return non-nil if all ROOT-PATHS exists in `pydyn-source-root-alist'."
-  (seq-every-p (lambda (path)
-                 (seq-contains-p pydyn-source-root-alist path))
-               root-paths))
+(defun pydyn--config-path-not-exists (config)
+  "Return non-nil if path in CONFIG not exists in `pydyn--source-config-alist'."
+  (not (pydyn--config-path-exists config)))
+
+
+(defun pydyn--configs-path-not-exists (configs)
+  "Return CONFIGS not exists in `pydyn--source-config-alist'.
+Compare path of CONFIGS with paths in `pydyn--source-config-alist'."
+  (let ((configs (pydyn--prepare-configs configs)))
+    (if (not pydyn--source-config-alist)
+        configs
+      (seq-filter #'pydyn--config-path-not-exists configs))))
+
+
+(defun pydyn--config-same-name-p (config other)
+  "Return non-nil if path in CONFIG is equal to path in OTHER."
+  (equal (plist-get config :name)
+         (plist-get other :name)))
+
+
+(defun pydyn--config-name-exist (config)
+  "Return non-nil if name in CONFIG exists in `pydyn--source-config-alist'."
+  (seq-contains-p pydyn--source-config-alist
+                  config
+                  #'pydyn--config-same-name-p))
+
+
+(defun pydyn--check-duplicate-names (configs)
+  "Throw user error with CONFIGS name exists in `pydyn--source-config-alist'."
+  (let ((dupl-names (seq-filter #'pydyn--config-name-exist configs)))
+    (unless (seq-empty-p dupl-names)
+      (user-error "Duplicate names exists %S"
+                  (pydyn--config-names dupl-names)))))
+
+
+(defun pydyn--merge-configs (configs)
+  "Return CONFIGS in config format."
+  (sort (seq-uniq (append pydyn--source-config-alist configs)
+                  #'pydyn--config-same-path-p)
+        (lambda (config other)
+          (string-lessp (pydyn--config-path-get config)
+                        (pydyn--config-path-get other)))))
+
+
+(defun pydyn--config-changed-p (configs)
+  "Return non-nil if CONFIGS is different from `pydyn--source-config-alist'."
+  (or (seq-every-p #'pydyn--config-path-exists configs)
+      (not (pydyn-source-config-exists))
+      (not pydyn--source-config-alist)))
 
 
 ;;;###autoload
-(defun pydyn-source-root-path-set (root-paths)
-  "Set `pydyn-source-root-alist' with unique ROOT-PATHS append with existing."
-  (let ((root-paths (pydyn--prepare-paths root-paths)))
-    (cond ((not pydyn-source-root-alist)
-           (setq pydyn-source-root-alist root-paths)
-           (pydyn-source-config-write))
-          ((not (pydyn--exist-in-source-roots root-paths))
-           (let ((source-paths (pydyn--append-and-clean-source-paths root-paths)))
-             (setq pydyn-source-root-alist source-paths)
-             (pydyn-source-config-write)))
-          (t (message "Sources exists already %S" root-paths)))))
+(defun pydyn-source-config-set (configs)
+  "Set `pydyn--source-config-alist' to CONFIGS."
+  (when configs
+    (when (and (pydyn-source-config-exists)
+               (not pydyn--source-config-alist))
+      (pydyn-source-config-load))
+    (let ((configs (pydyn--configs-path-not-exists configs))
+          (save (not pydyn--source-config-alist)))
+      (pydyn--check-duplicate-names configs)
+      (when pydyn--source-config-alist
+        (setq configs (pydyn--merge-configs configs)))
+      (setq save (or save (pydyn--config-changed-p configs)))
+      (setq pydyn--source-config-alist configs)
+      (when save
+        (message "Save source config")
+        (pydyn-source-config-write)))))
 
 
-(defun pydyn--source-config-read-get ()
+(defun pydyn--config-plist-get (line)
+  "Return plist frpom properties and values in LINE."
+  (let ((plist (list))
+        (prop-values (string-split line "\\(, \\)" t)))
+    (cl-loop for (prop value)
+             on prop-values by #'cddr
+             do (let ((prop (intern prop)))
+                  (when (eq prop :path)
+                    (setq value (pydyn--dir-path-of value)))
+                  (setq plist (plist-put plist prop value))))
+    plist))
+
+
+(defun pydyn--config-read ()
   "Return source root paths from current buffer."
-  (seq-map (lambda (path) (string-trim path "^[\"]+" "[\"]+$"))
+  (seq-map #'pydyn--config-plist-get
            (string-split (buffer-string) "[\n]" t)))
 
 
 (defun pydyn-source-config-load (&optional force)
-  "Load and restore `pydyn-source-root-alist' from file.
+  "Load and restore `pydyn--source-config-alist' from file.
 If FORCE is non-nil force load and set config."
   (interactive (list t))
-  (when (or (not pydyn-source-root-alist-restored) force)
-    (let ((file (pydyn-source-config-path)))
+  (let ((file (pydyn-source-config-path)))
+    (when (and (file-exists-p file)
+               (or (not pydyn-source-config-restored) force))
       (with-current-buffer (get-buffer-create pydyn-config-save-and-load-buffer)
         (goto-char (point-min))
         (delete-region (point-min) (point-max))
@@ -226,27 +317,39 @@ If FORCE is non-nil force load and set config."
         (goto-char (point-min))
         (delete-line)
         (when (length> (buffer-string) 0)
-          (pydyn-source-root-path-set (pydyn--source-config-read-get))
-          (kill-buffer (current-buffer)))))
-    (setq pydyn-source-root-alist-restored t)))
+          (condition-case nil
+              (progn
+                (setq pydyn-source-config-restored t)
+                (pydyn-source-config-set (pydyn--config-read)))
+            (setq pydyn-source-config-restored nil))
+          (kill-buffer (current-buffer)))))))
 
 
-(defun pydyn-is-source? (path)
-  "Return non-nil if PATH is subpath of a root-path in `pydyn-source-root-alist'."
-  (unless pydyn-source-root-alist
+(defun pydyn--path-is-child-of-p (config path)
+  "Return non-nil if PATH start with path in CONFIG."
+  (s-starts-with? (pydyn--config-path-get config)
+                  (pydyn--dir-path-of path)))
+
+
+(defun pydyn-is-source? (file-path)
+  "Return non-nil if FILE-PATH is subpath of a `pydyn--source-config-alist'."
+  (unless pydyn--source-config-alist
     (pydyn-source-config-load))
-  (unless pydyn-source-root-alist
-    (user-error "No source root exists"))
-  (seq-some (lambda (src-path) (s-starts-with? src-path path))
-            pydyn-source-root-alist))
+  (unless pydyn--source-config-alist
+    (user-error "No source config exists"))
+  (seq-some (lambda (config)
+              (pydyn--path-is-child-of-p config file-path))
+            pydyn--source-config-alist))
 
-(defun pydyn-source-root-of (file-path)
-  "Return source-root path of FILE-PATH."
-  (seq-find (lambda (src-path) (s-starts-with? src-path file-path))
-            pydyn-source-root-alist))
+
+(defun pydyn-source-config-of (file-path)
+  "Return source config for FILE-PATH or nil if not exists."
+  (seq-find (lambda (config) (pydyn--path-is-child-of-p config file-path))
+            pydyn--source-config-alist))
+
 
 (defun pydyn--path-is-ext? (file-path extensions)
-  "Return non-nil if FILE-PATH extension is in EXTENSIONS."
+  "Return non-nil if FILE-PATH extension exists in EXTENSIONS."
   (when file-path
     (let ((file-ext (file-name-extension file-path)))
       (seq-some (lambda (ext) (progn (s-ends-with? ext file-ext)))
@@ -255,20 +358,20 @@ If FORCE is non-nil force load and set config."
 
 ;;;###autoload
 (defun pydyn-dynamo-is-script? (&optional file-path)
-  "Return non-nil when FILE-PATH is Dynamo SCRIPT."
+  "Return non-nil if FILE-PATH is Dynamo SCRIPT file."
   (pydyn--path-is-ext? (pydyn-path-get file-path)
                        pydyn-dynamo-script-ext))
 
 
 ;;;###autoload
 (defun pydyn-dynamo-is-custom? (&optional file-path)
-  "Return non-nil when FILE-PATH is Dynamo CUSTOM NODE."
+  "Return non-nil if FILE-PATH is Dynamo CUSTOM NODE file."
   (pydyn--path-is-ext? (pydyn-path-get file-path)
                        pydyn-dynamo-custom-ext))
 
 
 (defun pydyn-is-dynamo? (&optional file-path)
-  "Return non-nil when FILE-PATH is Dynamo SCRIPT or CUSTOM NODE."
+  "Return non-nil if FILE-PATH is either a Dynamo SCRIPT or CUSTOM NODE file."
   (let ((file-path (pydyn-path-get file-path)))
     (or (pydyn-dynamo-is-script? file-path)
         (pydyn-dynamo-is-custom? file-path))))
@@ -283,24 +386,13 @@ If FORCE is non-nil force load and set config."
 
 
 (defun pydyn-is-dynamo-source? (&optional file-path)
-  "Return non-nil when FILE-PATH is sub-path of any source-path and is dynamo file.
+  "Return non-nil when FILE-PATH is sub-path of any config and is dynamo file.
 `pydyn-is-source?' and `pydyn-is-dynamo?' with FILE-PATH argument
 and both must return non-nil."
   (let ((file-path (pydyn-path-get file-path)))
-    (and (pydyn-is-source? file-path)
-         (pydyn-is-dynamo? file-path))))
+    (and (pydyn-is-dynamo? file-path)
+         (pydyn-is-source? file-path))))
 
-
-(defun pydyn-dynamo-add-source-root-path (file-path)
-  "Add source root path for FILE-PATH to `pydyn-source-root-alist'."
-  (let ((source-root (read-directory-name "Select new pydyn source-root" file-path)))
-    (unless (s-starts-with? source-root file-path)
-      (user-error "%S is NOT a parent-path of %S"
-                  source-root file-path))
-    (when (pydyn-is-source? source-root)
-      (user-error "%S is a sub-path of already existing root path"
-                  (file-name-base source-root)))
-    (pydyn-source-root-path-set source-root)))
 
 
 (defun pydyn-dynamo-file-exists-p (file-path)
@@ -327,7 +419,7 @@ and both must return non-nil."
 ;;;###autoload
 (defun pydyn-is-python-3? (engine)
   "Return non-nil when ENGINE is CPython 3 engine."
-  (and engine (string-equal engine pydyn-python-3-engine)))
+  (and engine (equal engine pydyn-python-3-engine)))
 
 
 (defun pydyn-is-python? (&optional file-path)
@@ -365,16 +457,9 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
 (defun pydyn-is-python-export? (&optional file-path)
   "Return non-nil when FILE-PATH is python file and local variables are set."
   (let ((file-path (pydyn-path-get file-path)))
-    (and (pydyn-python-local-var-set-p file-path)
-         (pydyn-is-python? file-path))))
-
-
-;;;###autoload
-(defun pydyn-is-python-source? (&optional file-path)
-  "Return non-nil when FILE-PATH is inside of `pydyn-export-root'."
-  (let ((file-path (pydyn-path-get file-path)))
-    (and (pydyn-is-source? file-path)
-         (pydyn-is-python? file-path))))
+    (and (pydyn-is-python? file-path)
+         (or (pydyn-python-local-var-set-p file-path)
+             (pydyn-is-export? file-path)))))
 
 
 (defun pydyn--files-in-directory (directory extension &optional recursive)
@@ -388,11 +473,18 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
     (seq-reverse (flatten-list files))))
 
 
+(defun pydyn--folder-name-for (path)
+  "Return PATH without path of source config."
+  (let ((config (pydyn-source-config-of path)))
+    (format "%s/" (plist-get config :name))))
+
+
 (defun pydyn--path-export-folder-for-source (path)
   "Return translated EXPORT directory of PATH."
   (concat pydyn-export-root
-          (string-replace (pydyn-source-root-of path) ""
-                          (file-name-parent-directory path))
+          (pydyn--folder-name-for path)
+          (pydyn-remove-config-path
+           (file-name-parent-directory path))
           (file-name-base path) "/"))
 
 
@@ -433,10 +525,12 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
 
 (defun pydyn-dynamo-select-file ()
   "Return selected dynamo file path by user."
-  (let ((files (seq-map (lambda (source) (pydyn-dynamo-files-in source t))
-                        pydyn-source-root-alist)))
+  (let* ((source-paths (pydyn--source-config-paths))
+         (files (seq-map (lambda (source)
+                           (pydyn-dynamo-files-in source t))
+                         source-paths)))
     (pydyn-selection-get files "Select Dynamo file: "
-                         pydyn-source-root-alist)))
+                         source-paths)))
 
 
 (defun pydyn-path-export-folder (node-path)

@@ -32,6 +32,7 @@
 (require 's)
 (require 'rect)
 
+
 (defcustom pydyn-python-keymap-prefix "C-p"
   "The prefix for pydyn-python-mode key bindings."
   :type 'string
@@ -58,7 +59,6 @@
     (define-key key-map (pydyn-python-key "h") #'pydyn-python-highlight-regex)
     (define-key key-map (pydyn-python-key "H") #'pydyn-python-unhighlight-regex)
     (define-key key-map (pydyn-python-key "n") #'pydyn-python-to-dynamo-node)
-    (define-key key-map (pydyn-python-key "r") #'pydyn-python-node-rename)
     (define-key key-map (pydyn-python-key "s") #'pydyn-python-to-dynamo-script)
     (define-key key-map (pydyn-python-key "S") #'pydyn-python-to-dynamo-folder)
     (define-key key-map (pydyn-python-key "t") #'pydyn-buffer-tabify)
@@ -73,11 +73,11 @@
 (add-to-list 'minor-mode-alist '(pydyn-python-mode " pydyn-python"))
 (add-to-list 'minor-mode-map-alist (cons 'pydyn-python-mode pydyn-python-mode-map));;
 
-(defun pydyn-python-command-regex-get(name-and-value)
-  "Return regex for NAME-AND-VALUE of comment, like type: ignore."
-  (format "#[ ]?%s[ ]?:[ ]?%s"
-          (s-trim (car name-and-value))
-          (s-trim (cadr name-and-value))))
+(defun pydyn-python-command-regex-get(checker-n-comment)
+  "Return regex for CHECKER-N-COMMENT of comment, like type: ignore."
+  (format "\\(#[ ]?%s[ ]?\\):\\([ ]?%s\\)\\(.*\\))"
+          (s-trim (car checker-n-comment))
+          (s-trim (cadr checker-n-comment))))
 
 
 (defun pydyn-python-command-regex(comment)
@@ -86,7 +86,7 @@
     (pydyn-python-command-regex-get (s-split ":" wo-hash))))
 
 
-(defcustom pydyn-python-indent-width nil
+(defcustom pydyn-python-indent-width 4
   "Indent width of spaces in `python-mode'."
   :type 'integer
   :group 'pydyn)
@@ -208,6 +208,16 @@
   :type 'string
   :group 'pydyn)
 
+(defun pydyn-python-formatter-set-p ()
+  "Return non-nil if python formatter strings are set."
+  (and pydyn-python-formatter-on pydyn-python-formatter-off))
+
+
+(defun pydyn-python-formatter-set-or-error ()
+  "Raise error if python formatter strings are not set."
+  (unless (pydyn-python-formatter-set-p)
+    (error "Python formatter comments not set")))
+
 
 (defun pydyn-python-formatter-add-off (start-point)
   "Return point of added `pydyn-python-formatter-off' at START-POINT."
@@ -229,6 +239,7 @@
 (defun pydyn-python-formatter-disable (start end)
   "Insert ON / OFF FORMATTER comment at START and END."
   (interactive "r")
+  (pydyn-python-formatter-set-or-error)
   ;; First insert the end value
   (let ((end-point (pydyn-python-formatter-add-on end))
         ;; Otherwise start would change the end position
@@ -283,6 +294,7 @@ Return point of match or nil."
 (defun pydyn-python-formatter-enable ()
   "Remove formatter comment if point is between OFF / ON comment."
   (interactive)
+  (pydyn-python-formatter-set-or-error)
   (when (pydyn-python-formatter-is-inside?)
     (save-excursion
       (goto-char (car (pydyn-python-formatter-off-pos)))
@@ -296,14 +308,15 @@ Return point of match or nil."
 (defun pydyn-python-formatter-clean-buffer ()
   "Remove formatter comment in current buffer."
   (interactive)
-  (save-excursion
-    (goto-char (point-min))
-    (when (pydyn-python--comment-next-search
-           pydyn-python-formatter-off)
+  (when (pydyn-python-formatter-set-p)
+    (save-excursion
       (goto-char (point-min))
-      (while (not (eobp))
-        (forward-line)
-        (pydyn-python-formatter-enable)))))
+      (when (pydyn-python--comment-next-search
+             pydyn-python-formatter-off)
+        (goto-char (point-min))
+        (while (not (eobp))
+          (forward-line)
+          (pydyn-python-formatter-enable))))))
 
 
 (defcustom pydyn-python-delete-contain nil
@@ -322,6 +335,12 @@ Return point of match or nil."
 (defcustom pydyn-python-type-ignore-regex nil
   "Regex to add `pydyn-python-type-ignore' if any regex matches."
   :type 'list
+  :group 'pydyn)
+
+
+(defcustom pydyn-python-type-ignore-func #'pydyn-python-ignore-add
+  "Function use to solve warning found by `pydyn-python-type-ignore-regex'."
+  :type 'symbol
   :group 'pydyn)
 
 
@@ -351,17 +370,23 @@ Return point of match or nil."
 
 
 ;;;###autoload
+(defun pydyn-python-fix-errors-at-point ()
+  "Add `pydyn-python-type-ignore' to known type checker errors."
+  (interactive)
+  )
+
+;;;###autoload
 (defun pydyn-python-ignore-to-errors ()
   "Add `pydyn-python-type-ignore' to known type checker errors."
   (interactive)
   (when pydyn-python-type-ignore-regex
     (save-excursion
       (dolist (regex pydyn-python-type-ignore-regex)
-        (pydyn-while-regex regex 'pydyn-python-ignore-add))))
+        (pydyn-while-regex regex pydyn-python-type-ignore-func))))
   (when pydyn-python-type-ignore-contain
     (save-excursion
       (dolist (search-for pydyn-python-type-ignore-contain)
-        (pydyn-while-search search-for 'pydyn-python-ignore-add)))))
+        (pydyn-while-search search-for pydyn-python-type-ignore-func)))))
 
 
 (defun pydyn-python-convert-clean ()
@@ -479,22 +504,26 @@ Return point of match or nil."
 
 
 ;;;###autoload
-(defun pydyn-python-to-dynamo-node (file-path switch-or-kill)
-  "Replace code from FILE-PATH in source. SWITCH-OR-KILL Dynamo buffer afterwarts."
-  (interactive (list buffer-file-name
-                     (pydyn-choose-switch-or-kill "Dynamo")))
-  (pydyn-is-python-export-or-error file-path)
-  (with-current-buffer (pydyn-buffer-by file-path)
-    (pydyn-buffer-save (pydyn-python--to-dynamo-node)
+(defun pydyn-python-to-dynamo-node ()
+  "Replace code from `current-buffer' in dynamo source file."
+  (interactive)
+  (pydyn-is-python-export-or-error)
+  (pydyn-convert-convert-process-started)
+  (let ((buffer nil)
+        (switch-or-kill (pydyn-choose-switch-or-kill "Dynamo")))
+    (unwind-protect
+        (setq buffer (pydyn-python--to-dynamo-node)))
+    (pydyn-convert-convert-process-finished)
+    (pydyn-buffer-save buffer
                        (pydyn-is-switch switch-or-kill)
                        (pydyn-is-switch-other switch-or-kill)
                        (pydyn-is-kill switch-or-kill))))
 
 
-(defun pydyn-python-to-dynamo-message (dyn-path)
-  "Show message for updated code in DYN-PATH."
-  (let ((root-path (or (pydyn-source-root-of dyn-path) "")))
-    (message "Dynamo %S updated" (string-remove-prefix root-path dyn-path))))
+(defun pydyn-python--update-message (file-path)
+  "Show message for updated code in FILE-PATH."
+  (message "Dynamo %S updated"
+           (pydyn-remove-config-path file-path)))
 
 
 ;;;###autoload
@@ -505,24 +534,24 @@ Return point of match or nil."
                        (pydyn-python-select-file))
                      (pydyn-choose-switch-or-kill "Dynamo")))
   (pydyn-is-python-export-or-error file-path)
-  (unwind-protect
-      (progn
-        (pydyn-disable-lsp-clients)
-        (let ((directory (file-name-directory file-path))
-              (buffer-before (current-buffer))
-              (switch (pydyn-is-switch switch-or-kill))
-              (other-win (pydyn-is-switch-other switch-or-kill))
-              (kill (pydyn-is-kill switch-or-kill))
-              (dyn-path nil))
-          (dolist (python-path (pydyn-python-files-in directory))
-            (let ((buffer (pydyn-buffer-by python-path)))
-              (with-current-buffer buffer
-                (setq dyn-path (pydyn-python--to-dynamo-node)))
-              (unless (equal buffer buffer-before)
-                (kill-buffer-if-not-modified buffer))))
-          (pydyn-buffer-save dyn-path switch other-win kill)
-          (pydyn-python-to-dynamo-message dyn-path)))
-    (pydyn-enable-lsp-clients)))
+  (pydyn-convert-convert-process-started)
+  (let ((directory (file-name-directory file-path))
+        (buffer-before (current-buffer))
+        (switch (pydyn-is-switch switch-or-kill))
+        (other-win (pydyn-is-switch-other switch-or-kill))
+        (kill (pydyn-is-kill switch-or-kill))
+        (buffer nil)
+        (dyn-path nil))
+    (unwind-protect
+        (dolist (python-path (pydyn-python-files-in directory))
+          (setq buffer (pydyn-buffer-by python-path))
+          (with-current-buffer buffer
+            (setq dyn-path (pydyn-python--to-dynamo-node)))
+          (unless (equal buffer buffer-before)
+            (kill-buffer-if-not-modified buffer)))
+      (pydyn-convert-convert-process-finished)
+      (pydyn-python--update-message dyn-path)
+      (pydyn-buffer-save dyn-path switch other-win kill))))
 
 
 ;;;###autoload
@@ -531,26 +560,27 @@ Return point of match or nil."
   (interactive (list (read-directory-name "Replace code in Dynamo source of all python files in? "
                                           pydyn-export-root)
                      (pydyn-choose-switch-or-kill "Dynamo")))
-  (unwind-protect
-      (let ((dyn-path nil)
-            (buffer-before (current-buffer))
-            (switch (pydyn-is-switch switch-or-kill))
-            (other-win (pydyn-is-switch-other switch-or-kill))
-            (kill (pydyn-is-kill switch-or-kill)))
-        (pydyn-disable-lsp-clients)
+  (pydyn-convert-convert-process-started)
+  (let ((dyn-path nil)
+        (buffer-before (current-buffer))
+        (switch (pydyn-is-switch switch-or-kill))
+        (other-win (pydyn-is-switch-other switch-or-kill))
+        (kill (pydyn-is-kill switch-or-kill))
+        (buffer nil))
+    (unwind-protect
         (dolist (file-path (pydyn-python-files-in directory t))
-          (let ((buffer (pydyn-buffer-by file-path)))
-            (with-current-buffer buffer
-              (let ((current-dyn (pydyn-python--to-dynamo-node)))
-                (unless (or dyn-path (string-equal current-dyn dyn-path))
-                  (when (and dyn-path (not (string-equal current-dyn dyn-path)))
-                    (pydyn-buffer-save dyn-path nil t)
-                    (pydyn-python-to-dynamo-message dyn-path))
-                  (setq dyn-path current-dyn))
-                (when (not (equal buffer buffer-before))
-                  (kill-buffer-if-not-modified buffer))))))
-        (pydyn-buffer-save dyn-path switch other-win kill))
-    (pydyn-enable-lsp-clients)))
+          (setq buffer (pydyn-buffer-by file-path))
+          (with-current-buffer buffer
+            (let ((current-dyn (pydyn-python--to-dynamo-node)))
+              (unless (or dyn-path (string-equal current-dyn dyn-path))
+                (when (and dyn-path (not (string-equal current-dyn dyn-path)))
+                  (pydyn-buffer-save dyn-path nil nil t)
+                  (pydyn-python--update-message dyn-path))
+                (setq dyn-path current-dyn))
+              (when (not (equal buffer buffer-before))
+                (kill-buffer-if-not-modified buffer)))))
+      (pydyn-convert-convert-process-finished)
+      (pydyn-buffer-save dyn-path switch other-win kill))))
 
 
 ;;;###autoload
@@ -561,11 +591,21 @@ Return point of match or nil."
     (+vertico/project-search nil symbol pydyn-export-root)))
 
 
-(defun pydyn-is-python-export-h ()
-  "Return non-nil when FILE-PATH is python file and local variables are set."
-  (if (pydyn-python-local-var-set-p buffer-file-name)
-      (pydyn-python-mode-on)
-    (pydyn-python-mode-off)))
+(defcustom pydyn-python-can-enable-predicates
+  (list 'pydyn-not-processing?
+        'pydyn-is-python-export?)
+  "Symbols of functions to check `pydyn-python-mode' can be enabled.
+`pydyn-python-mode' will be disabled if any of these functions return nil.
+Functions are called with no arguments."
+  :type '(repeat (symbol :tag "Function"))
+  :group 'pydyn)
+
+
+;;;###autoload
+(defun pydyn-python-can-enable? ()
+  "Return non-nil if `pydyn-python-mode' can be activated."
+  (when (derived-mode-p 'python-mode)
+    (cl-every #'funcall pydyn-python-can-enable-predicates)))
 
 
 (define-minor-mode pydyn-python-mode
@@ -574,58 +614,49 @@ Return point of match or nil."
   :group 'pydyn
   :lighter " pydyn-python"
   :keymap pydyn-python-mode-map
-  (add-hook 'python-mode-local-vars-hook #'pydyn-is-python-export-h 99)
-  (cond
-   ((and pydyn-python-mode (pydyn-not-processing?))
-    (pydyn-python-indent-width-setup)
-    (pydyn-python-line-length-setup)
-    (pydyn-buffer-breadcrumb-on)
-    (message "ELYO PYTHON on"))
-   ((and pydyn-python-mode (not (pydyn-not-processing?)))
-    (setq pydyn-python-mode nil)
-    (message "CONVERT running"))
-   (t
-    (setq pydyn-python-mode nil)
-    (message "ELYO PYTHON off")))
 
-  (if pydyn-python-mode
-      (pydyn-source-config-load)
-    (pydyn-source-config-write)))
-
-
-;;;###autoload
-(defun pydyn-is-python-mode? ()
-  "Return non-nil if current mode is `python-mode'."
-  (or (equal major-mode 'python-mode)
-      (derived-mode-p 'python-mode)))
-
-
-;;;###autoload
-(defun pydyn-python-mode-activate ()
-  "Function to activate `pydyn-python-mode'."
-  (if (and (pydyn-is-python-mode?)
-           (or (pydyn-is-python-export?)
-               (pydyn-is-python-source?)))
-      (progn (pydyn-python-indent-width-setup)
-             (pydyn-python-line-length-setup)
-             (if (pydyn-not-processing?)
-                 (pydyn-python-mode-on)
-               (pydyn-python-mode-off)))
+  (unless (pydyn-python-can-enable?)
     (pydyn-python-mode-off)))
 
 
 ;;;###autoload
 (defun pydyn-python-mode-on ()
-  "Activate `pydyn-dynamo-mode'."
+  "Activate `pydyn-python-mode'."
   (interactive)
-  (pydyn-python-mode 1))
+  (unless pydyn-python-mode
+    (pydyn-python-mode 1)))
 
 
 ;;;###autoload
 (defun pydyn-python-mode-off ()
-  "Deaktiviert `pydyn-dynamo-mode'."
+  "Deactivate `pydyn-python-mode'."
   (interactive)
-  (pydyn-python-mode -1))
+  (when pydyn-python-mode
+    (pydyn-python-mode -1)))
+
+
+(defvar pydyn-python-enable-predicates
+  (list 'pydyn-source-config-load
+        'pydyn-python-indent-width-setup
+        'pydyn-python-line-length-setup
+        'pydyn-buffer-breadcrumb-on)
+  "Symbols of functions if `pydyn-python-mode' is enabled.")
+
+
+(defvar pydyn-python-disable-predicates
+  (list 'pydyn-source-config-write
+        'pydyn-buffer-breadcrumb-off)
+  "Symbols of functions if `pydyn-python-mode' is disabled.")
+
+
+(defun pydyn-python-mode-h ()
+  "Function to call when `pydyn-python-mode' is toggled."
+  (if pydyn-python-mode
+      (cl-mapc #'funcall pydyn-python-enable-predicates)
+    (cl-mapc #'funcall pydyn-python-disable-predicates)))
+
+
+(add-hook 'pydyn-python-mode-hook 'pydyn-python-mode-h)
 
 
 (provide 'pydyn-python)

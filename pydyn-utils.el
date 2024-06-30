@@ -216,7 +216,7 @@ PROMPT is show to user and INITIAL-INPUT is pre selected if non-nil."
   (not pydyn-processing))
 
 
-(defcustom pydyn-lsp-client
+(defcustom pydyn-process-lsp-client-disabled
   '(('json-mode   . (list json-ls
                           json-ls-tramp
                           json-rpc))
@@ -225,11 +225,11 @@ PROMPT is show to user and INITIAL-INPUT is pre selected if non-nil."
                           pyls
                           ruff-lsp-tramp
                           ruff-lsp
+                          ruff
                           json-rpc)))
-  "Toggle to CONVERSATION configuration LSP client are blocked for execution.
-They are blocked the syntax of the code can also later be checked.
-Otherwise they are really slow down the process. See `lsp-disabled-clients'"
-  :type 'list
+  "List of LSP clients to disable during convert process."
+  :type '(repeat (symbol))
+  :safe 'listp
   :group 'pydyn)
 
 
@@ -240,22 +240,23 @@ Otherwise they are really slow down the process. See `lsp-disabled-clients'"
 
 
 (defcustom pydyn-process-end-hook nil
-  "Hooks called after convert process is finish."
+  "Hooks called after convert process ends."
   :type 'list
   :group 'pydyn)
 
 
 ;;;###autoload
-(defun pydyn-disable-lsp-clients ()
-  "Disable lsp clients in `pydyn-lsp-client'."
-  (setq lsp-disabled-clients pydyn-lsp-client)
-  (run-hooks 'pydyn-process-start-hook)
-  (setq pydyn-processing t))
+(defun pydyn-convert-convert-process-started ()
+  "Function to start convert process and run `pydyn-process-start-hook'."
+  (unless pydyn-processing
+    (setq lsp-disabled-clients pydyn-process-lsp-client-disabled)
+    (run-hooks 'pydyn-process-start-hook)
+    (setq pydyn-processing t)))
 
 
 ;;;###autoload
-(defun pydyn-enable-lsp-clients ()
-  "Enable LSP-client and restore attributes."
+(defun pydyn-convert-convert-process-finished ()
+  "Function clean up after convert process and run `pydyn-process-end-hook'."
   (setq pydyn-processing nil)
   (run-hooks 'pydyn-process-end-hook)
   (setq lsp-disabled-clients nil))

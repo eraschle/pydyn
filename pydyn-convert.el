@@ -81,7 +81,7 @@
   (when (pydyn-is-dynamo-source? file-path)
     (seq-map (lambda (node-info)
                (pydyn-export-path node-info))
-             (pydyn-python-nodes-in file-path))))
+             (pydyn-python-nodes-in file-path 'kill-buffer))))
 
 
 (defun pydyn-code-in-buffer (buffer node-info &optional callback)
@@ -147,13 +147,11 @@ CALLBACK is applied to clean exported code."
 CALLBACK is applied to clean exported code."
   (let ((export-path (pydyn-export-path node-info)))
     (with-current-buffer (pydyn-code-in-buffer
-                          (pydyn-buffer-by export-path) node-info callback )
+                          (pydyn-buffer-by export-path) node-info callback)
       (pydyn--convert-file-local-set node-info)
       (pydyn--convert-buffer-local-set node-info nil)
-      ;; Go to first line of code
-      (goto-char (point-min))
-      ;; Because of file local vars, start at second line
-      (forward-line)
+      (goto-char (point-min)) ; Go to first line of code
+      (forward-line) ; Because of file local vars, start at second line
       (while (string-blank-p (pydyn-current-line))
         (forward-line))
       (current-buffer))))
@@ -164,7 +162,7 @@ CALLBACK is applied to clean exported code."
 CLEAN-CB is applied to clean exported code. Unless last buffer,
   buffer will be saved and killed"
   (let ((last-export nil))
-    (dolist (node-info (pydyn-python-nodes-in file-path :name))
+    (dolist (node-info (pydyn-python-nodes-in file-path nil :name))
       (when last-export
         (pydyn-buffer-save last-export nil nil t))
       (setq last-export (pydyn-convert-node-to-python
@@ -184,7 +182,6 @@ CLEAN-CB is applied to clean exported code. Unless last buffer,
         (delete-line))
       (delete-trailing-whitespace (point-min) (point-max))
       ;; Dynamo use always tabs and \n in JSON string...
-      (pydyn-buffer-tabify)
       (pydyn-dynamo-encode
        (string-trim (pydyn-buffer-substring (point-min) (point-max))
                     "[\n]+" "[\n]+")))))

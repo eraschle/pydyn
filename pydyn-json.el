@@ -238,7 +238,6 @@ If AS-STRING is non-nil value contain with surrounding \"."
     (setq buffer-cache (make-hash-table)))
   ;; (unless (assoc file-path buffer-cache)
   (unless (gethash file-path buffer-cache)
-    (message "Create node info cache %s" (file-name-base file-path))
     (pydyn--json-node-infos-create file-path))
   (gethash file-path buffer-cache))
 
@@ -331,10 +330,14 @@ If AS-STRING is non-nil value contain with surrounding \"."
               (pydyn--json-node-infos buffer-file-name))))
 
 
-(defun pydyn-python-nodes-in (file-path &optional sort-prop)
-  "Return plist of python nodes in FILE-PATH sorted by SORT-PROP."
+(defun pydyn-python-nodes-in (file-path kill-buffer &optional sort-prop)
+  "Return plist of python nodes in FILE-PATH sorted by SORT-PROP.
+If KILL-BUFFER is non-nil buffer is killed after reading nodes."
   (with-current-buffer (pydyn-buffer-by file-path)
-    (pydyn-python-nodes-get sort-prop)))
+    (let ((nodes (pydyn-python-nodes-get sort-prop)))
+      (when kill-buffer
+        (kill-buffer))
+      nodes)))
 
 
 (defvar :is-custom (make-symbol "is-custom")
