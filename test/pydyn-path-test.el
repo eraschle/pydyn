@@ -29,10 +29,12 @@
 (require 'pydyn-path)
 
 
-(ert-deftest pydyn-is-python-2-test ()
-  (should-not (pydyn-is-python-2? nil))
-  (let ((pydyn-python-2-engine "py2"))
-    (should (pydyn-is-python-2? "py2"))))
+(describe "python version checks"
+  (it "should not be python 2"
+    (expect (pydyn-is-python-2? nil) :to-be nil))
+  (it "with the same value as in `pydyn-python-2-engine' it should be t."
+    (let ((pydyn-python-2-engine "py2"))
+      (expect (pydyn-is-python-2? "py2") :to-be t))))
 
 (ert-deftest pydyn-is-python-3-test ()
   (should-not (pydyn-is-python-3? nil))

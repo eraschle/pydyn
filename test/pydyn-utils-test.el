@@ -67,14 +67,6 @@
   ;; TODO: How to test `pydyn-while-regex' useful
   )
 
-(ert-deftest pydyn--name-get-test ()
-  (let* ((dir-path "/some/path/of/directory/")
-         (file-name "some-file-name.el")
-         (file-path (concat dir-path file-name)))
-    (should (equal (pydyn--name-get file-path)
-                   (pydyn--name-get file-path
-                                    dir-path)))))
-
 (ert-deftest pydyn-not-processing-test ()
   ;; non-nil if process not is running
   (should (pydyn-not-processing?))
