@@ -553,6 +553,14 @@ Return point of match or nil."
     (pydyn-enable-lsp-clients)))
 
 
+;;;###autoload
+(defun pydyn-python-search-in-export ()
+  "Return search result in `pydyn-export-root' for symbol at point."
+  (interactive)
+  (let ((symbol (symbol-name (symbol-at-point))))
+    (+vertico/project-search nil symbol pydyn-export-root)))
+
+
 (defun pydyn-is-python-export-h ()
   "Return non-nil when FILE-PATH is python file and local variables are set."
   (if (pydyn-python-local-var-set-p buffer-file-name)
