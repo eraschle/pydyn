@@ -304,7 +304,7 @@ If AS-STRING is non-nil value contain with surrounding \"."
       (widen))
   (let ((node-info (pydyn-json-node-info-by buffer-file-name node-id)))
     (unless node-info
-      (error "Node info with %s does not exist in %s"
+      (error "Node [%s] does not exist in %s"
              node-id buffer-file-name))
     (narrow-to-region (save-excursion
                         (goto-char (point-min))

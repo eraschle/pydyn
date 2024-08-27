@@ -93,14 +93,17 @@
 ;;;###autoload
 (defun pydyn-buffer-save (buffer-or-path &optional action-cb)
   "Save BUFFER-OR-PATH buffer if modified and call ACTION-CB if non-nil."
-  (let ((buffer (if (bufferp buffer-or-path)
-                    buffer-or-path
-                  (pydyn-buffer-by buffer-or-path))))
-    (when (buffer-modified-p buffer)
-      (with-current-buffer buffer
-        (save-buffer 1)))
-    (when (and action-cb (buffer-live-p buffer))
-      (funcall action-cb buffer))))
+  (when buffer-or-path
+    (let ((buffer (if (bufferp buffer-or-path)
+                      buffer-or-path
+                    (pydyn-buffer-by buffer-or-path))))
+      (when (buffer-modified-p buffer)
+        (with-current-buffer buffer
+          (save-buffer 1)))
+      (when (and action-cb (buffer-live-p buffer))
+        (if (symbolp action-cb)
+            (funcall action-cb buffer)
+          (funcall (intern action-cb) buffer))))))
 
 
 (defun pydyn-buffer-substring (start end &optional with-properties)

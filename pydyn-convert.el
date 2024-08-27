@@ -152,7 +152,7 @@ CALLBACK is applied to clean exported code."
 (defun pydyn-convert--clean-orphan (dynamo-nodes)
   "Delete python files in FILE-PATH that are not in DYNAMO-NODES."
   (let* ((dynamo-path (plist-get (seq-first dynamo-nodes) :path))
-         (python-files (pydyn-python-files-in
+         (python-files (pydyn-path-python-files-in
                         (pydyn-path-export-folder dynamo-path)))
          (node-paths (seq-map 'pydyn-export-path dynamo-nodes)))
     (dolist (to-delete (seq-difference python-files node-paths))
@@ -210,18 +210,26 @@ If DELETE-ORPHAN is non-nil, delete orphan python files."
         (buffer (pydyn-buffer-by node-path))
         (trim "[ \\t\\n\\r\"]+"))
     (switch-to-buffer buffer)
-    (pydyn-json-select-code-of
-     node-id (string-trim code trim trim))
-    (pydyn--cursor-to-left-border)))
+    (let ((scroll-conservatively 101)
+          (scroll-preserve-screen-position t))
+      (pydyn-json-select-code-of
+       node-id (string-trim code trim trim)))
+    (call-interactively
+     (pydyn-utils-scroll-window-left))))
 
 
-(defun pydyn--cursor-to-left-border ()
-  "Scroll the screen that the cursor is close to left border."
-  (if (= 0 (window-left-column))
-      (scroll-left (1- (current-column)))
-    (scroll-left (1- (- (current-column) (window-left-column)))))
-  (scroll-right 5)
-  (recenter))
+(defun pydyn-utils-scroll-window-left ()
+  "Scroll window left while keeping cursor position."
+  (interactive)
+  (let ((original-position (point))
+        (original-window-start (window-start))
+        (scroll-column-number (if this-command
+                                  (current-column)
+                                (max 0 (- (current-column)
+                                          (round (* 0.10 (window-body-width))))))))
+    (scroll-left scroll-column-number)
+    (goto-char original-position)
+    (set-window-start (selected-window) original-window-start)))
 
 
 (defun pydyn-dynamo-file-info ()

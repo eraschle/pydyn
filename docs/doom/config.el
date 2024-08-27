@@ -162,7 +162,7 @@
   :hook (json-mode . pydyn-dynamo-mode-activate)
   :config
   (setq pydyn-source-root (file-truename pydyn-source)
-        pydyn-export-root (file-truename pydyn-export))
+        pydyn-config-export-path (file-truename pydyn-export))
 
   (add-to-list 'apheleia-inhibit-functions 'pydyn-dynamo-format-maybe-inhibit-h)
   (add-hook 'pydyn-dynamo-mode-hook 'pydyn-dynamo-mode-setup)

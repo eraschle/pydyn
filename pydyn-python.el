@@ -479,11 +479,22 @@ Return point of match or nil."
       (query-replace-regexp pydyn-python-if-bracket-regex "if \\1:"))))
 
 
+(defun pydyn-python-dynamo-exists-or-error (file-path)
+  "Throw user error if FILE-PATH not exists or is not a Dynamo file."
+  (let ((file-name (file-name-base file-path)))
+    (unless (file-exists-p file-path)
+      (user-error "%s does not exists" file-name))
+    (unless (pydyn-is-dynamo? file-path)
+      (user-error "%s is NOT a Dynamo file" file-name))))
+
+
 ;;;###autoload
 (defun pydyn-python-goto-dynamo-node ()
   "Goto to source file and try to select code at point in source."
   (interactive)
-  (pydyn-dynamo-exists-or-error node-path)
+  (unless (pydyn-is-python-export? buffer-file-name)
+    (user-error "Not a python export file"))
+  (pydyn-python-dynamo-exists-or-error buffer-file-name)
   (pydyn-goto-code (pydyn-convert-to-dynamo
                     (pydyn-current-line))))
 
@@ -500,8 +511,10 @@ Return point of match or nil."
 
 (defun pydyn-python--to-dynamo-node ()
   "Replace python code of current buffer in Dynamo node."
-  (pydyn-convert-python-to-dynamo (pydyn-python--code-clean)))
-
+  (condition-case error
+      (pydyn-convert-python-to-dynamo (pydyn-python--code-clean))
+    (error (progn (message "Error convert to dynamo: %s" error)
+                  node-path))))
 
 ;;;###autoload
 (defun pydyn-python-to-dynamo-node ()
@@ -512,15 +525,26 @@ Return point of match or nil."
   (let ((buffer nil)
         (save-buffer-cb (pydyn-choose-buffer-save-action "Dynamo")))
     (unwind-protect
-        (setq buffer (pydyn-python--to-dynamo-node)))
-    (pydyn-convert-convert-process-finished)
-    (pydyn-buffer-save buffer save-buffer-cb)))
+        (setq buffer (pydyn-python--to-dynamo-node))
+      (pydyn-convert-convert-process-finished)
+      (pydyn-buffer-save buffer save-buffer-cb))))
 
 
 (defun pydyn-python--update-message (file-path)
   "Show message for updated code in FILE-PATH."
-  (message "Dynamo %S updated"
-           (pydyn-remove-config-path file-path)))
+  (let ((config (pydyn-config-by-path file-path)))
+    (message "Dynamo %S updated"
+             (string-remove-prefix (pydyn-config-source-path config)
+                                   file-path))))
+
+
+(defun pydyn-python--select-file ()
+  "Return selected dynamo file path by user."
+  (let* ((config (pydyn-config-select-config-path))
+         (export-path (pydyn-path-export-path-for config))
+         (files (pydyn-path-python-files-in export-path t)))
+    (pydyn-selection-get files "Select Python file: "
+                         (list export-path))))
 
 
 ;;;###autoload
@@ -528,7 +552,7 @@ Return point of match or nil."
   "Replace code from FILE-PATH of all Dynamo nodes, SAVE-BUFFER-CB buffer."
   (interactive (list (if (pydyn-is-python-export? buffer-file-name)
                          (buffer-file-name)
-                       (pydyn-python-select-file))
+                       (pydyn-python--select-file))
                      (pydyn-choose-buffer-save-action "Dynamo")))
   (pydyn-is-python-export-or-error file-path)
   (pydyn-convert-convert-process-started)
@@ -537,7 +561,7 @@ Return point of match or nil."
         (buffer nil)
         (dyn-path nil))
     (unwind-protect
-        (dolist (python-path (pydyn-python-files-in directory))
+        (dolist (python-path (pydyn-path-python-files-in directory))
           (setq buffer (pydyn-buffer-by python-path))
           (with-current-buffer buffer
             (setq dyn-path (pydyn-python--to-dynamo-node)))
@@ -548,18 +572,33 @@ Return point of match or nil."
       (pydyn-buffer-save dyn-path save-buffer-cb))))
 
 
+(defun pydyn-python--export-search-path ()
+  "Return path to search for python files based on `current-buffer'."
+  (let* ((path (pydyn-path-get))
+         (config (pydyn-config-by-export-path path)))
+    (cond ((not (null config)) (pydyn-path-export-path-for config))
+          ((pydyn-config-is-export? path) (file-name-directory path))
+          (t (pydyn-path-export-path-for (pydyn-config-select-config))))))
+
+
+(defun pydyn-python--select-folder ()
+  "Return selected folder by user."
+  (pydyn-config-select-directory
+   "Replace code in Dynamo source of all python files in? "
+   (pydyn-python--export-search-path)))
+
+
 ;;;###autoload
 (defun pydyn-python-to-dynamo-folder (directory save-buffer-cb)
   "Replace code in Dynamo of python files in DIRECTORY, SAVE-BUFFER-CB last buffer."
-  (interactive (list (read-directory-name "Replace code in Dynamo source of all python files in? "
-                                          pydyn-export-root)
+  (interactive (list (pydyn-python--select-folder)
                      (pydyn-choose-buffer-save-action "Dynamo")))
   (pydyn-convert-convert-process-started)
   (let ((dyn-path nil)
         (buffer-before (current-buffer))
         (buffer nil))
     (unwind-protect
-        (dolist (file-path (pydyn-python-files-in directory t))
+        (dolist (file-path (pydyn-path-python-files-in directory t))
           (setq buffer (pydyn-buffer-by file-path))
           (with-current-buffer buffer
             (let ((current-dyn (pydyn-python--to-dynamo-node)))
@@ -572,14 +611,6 @@ Return point of match or nil."
                 (kill-buffer-if-not-modified buffer)))))
       (pydyn-convert-convert-process-finished)
       (pydyn-buffer-save dyn-path save-buffer-cb))))
-
-
-;;;###autoload
-(defun pydyn-python-search-in-export ()
-  "Return search result in `pydyn-export-root' for symbol at point."
-  (interactive)
-  (let ((symbol (symbol-name (symbol-at-point))))
-    (+vertico/project-search nil symbol pydyn-export-root)))
 
 
 (defcustom pydyn-python-can-enable-predicates
@@ -627,7 +658,7 @@ Functions are called with no arguments."
 
 
 (defvar pydyn-python-enable-predicates
-  (list 'pydyn-source-config-load
+  (list 'pydyn-config-load
         'pydyn-python-indent-width-setup
         'pydyn-python-line-length-setup
         'pydyn-buffer-breadcrumb-on)
@@ -635,7 +666,7 @@ Functions are called with no arguments."
 
 
 (defvar pydyn-python-disable-predicates
-  (list 'pydyn-source-config-write
+  (list 'pydyn-config-write
         'pydyn-buffer-breadcrumb-off)
   "Symbols of functions if `pydyn-python-mode' is disabled.")
 

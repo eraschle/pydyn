@@ -86,63 +86,11 @@
     node-info))
 
 
-(defun pydyn-dynamo--source-path-select (file-path)
-  "Add source root path for FILE-PATH to `pydyn-source-config-alist'."
-  (let ((path (pydyn--dir-path-of (read-directory-name
-                                   "Select new source-config: "
-                                   file-path))))
-    (unless (s-starts-with? path file-path)
-      (user-error "%S is NOT a parent-path of %S" path file-path))
-    (when (pydyn-is-source? path)
-      (user-error "%S is a sub-path of already existing root path"
-                  (file-name-base path)))
-    path))
-
-
-(defun pydyn-dynamo--source-name-possible (name)
-  "Return non-nil if NAME is a possible source name."
-  (not (seq-contains-p (pydyn--config-names) name)))
-
-
-(defun pydyn-dynamo--source-names-from (path)
-  "Return possible source name from PATH."
-  (let ((existing (pydyn--config-names)))
-    (seq-filter (lambda (name) (not (seq-contains-p existing name)))
-                (seq-rest (f-split path)))))
-
-
-(defun pydyn-dynamo--source-name-ask (path)
-  "Ask user for source name for PATH."
-  (let ((name (completing-read
-               (format "Enter or select name for %S: " path)
-               (pydyn-dynamo--source-names-from path)
-               nil #'pydyn-dynamo--source-name-possible)))
-    (unless (pydyn-dynamo--source-name-possible name)
-      (user-error "%S is used in an other source config" name))
-    name))
-
-
-;;;###autoload
-(defun pydyn-dynamo-select-source-path ()
-  "Return source config plist selected by the user."
-  (let ((config (pydyn-dynamo-select-source)))
-    (plist-get config :path)))
-
-
-(defun pydyn-dynamo--add-source-config (file-path)
-  "Add source root path for FILE-PATH to `pydyn-source-config-alist'."
-  (let* ((file-path (pydyn--dir-path-of file-path))
-         (path (pydyn-dynamo--source-path-select file-path))
-         (name (pydyn-dynamo--source-name-ask path)))
-    (pydyn-source-config-set (list (list :path path :name name)))
-    (pydyn-source-config-write)))
-
-
 (defun pydyn-dynamo--ensure-source-config (&optional file-path)
   "Ensure source config for FILE-PATH exists."
   (let ((file-path (pydyn-path-get file-path)))
-    (unless (pydyn-is-source? file-path)
-      (pydyn-dynamo--add-source-config file-path))))
+    (unless (pydyn-config-is-known-source-p file-path)
+      (pydyn-config-add-config file-path))))
 
 
 ;;;###autoload
@@ -151,13 +99,13 @@
   (interactive)
   (pydyn-is-dynamo-or-error)
   (pydyn-dynamo--ensure-source-config)
-  (let ((path (pydyn-export-path
-               (pydyn-dynamo--node-info-or-error))))
+  (let ((path (pydyn-export-path (pydyn-dynamo--node-info-or-error))))
     (unless (file-exists-p path)
-      (user-error "File %s does not exists in %s"
-                  (file-name-base path)
-                  (file-name-parent-directory path)))
-    (switch-to-buffer-other-window (pydyn-buffer-by path))))
+      (pydyn-dynamo-at-point-to-python 'switch-to-buffer))
+    (let ((buffer (pydyn-buffer-by path)))
+      (with-current-buffer buffer
+        (view-mode-exit))
+      (switch-to-buffer-other-window buffer))))
 
 
 ;;;###autoload
@@ -193,6 +141,14 @@
       (pydyn-buffer-save buffer save-buffer-cb))))
 
 
+
+(defun pydyn-dynamo-select-file ()
+  "Return selected dynamo file path by user."
+  (let ((path (pydyn-config-select-config-path)))
+    (pydyn-selection-get (pydyn-path-dynamo-files-in path t)
+                         "Select Dynamo file: " path)))
+
+
 ;;;###autoload
 (defun pydyn-dynamo-script-to-python (file-path save-buffer-cb delete-orphan)
   "Export python node in FILE-PATH and SAVE-BUFFER-CB to export buffer.
@@ -213,27 +169,26 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
       (pydyn-buffer-save buffer save-buffer-cb))))
 
 
-(defun pydyn-dynamo-folder-select ()
-  "Return folder with dynamo for export selected by the user."
-  (interactive)
-  (let ((source-root (completing-read "Select source-root: "
-                                      (pydyn--source-config-paths) nil t)))
-    (read-directory-name "Select directory: " source-root)))
+(defun pydyn-dynamo-select-source-for-export ()
+  "Return source path to export python files from Dynamo files."
+  (let ((source-root (pydyn-config-select-config-path)))
+    (pydyn-config-select-directory
+     "Select source to export python file from Dynamo Contentw? " source-root)))
+
 
 ;;;###autoload
 (defun pydyn-dynamo-folder-to-python (directory save-buffer-cb delete-orphan)
   "Export all python nodes of Dynamo files in DIRECTORY.
 SAVE-BUFFER-CB last export buffer afterwards.
 If DELETE-ORPHAN is non-nil delete orphan python files."
-  (interactive (list (read-directory-name "Export Python of directory? "
-                                          default-directory)
+  (interactive (list (pydyn-dynamo-select-source-for-export)
                      (pydyn-choose-buffer-save-action "Python")
                      (y-or-n-p "Delete orphan python files? ")))
   (pydyn-dynamo--ensure-source-config directory)
   (pydyn-convert-convert-process-started)
   (let ((buffer nil))
     (unwind-protect
-        (dolist (file-path (pydyn-dynamo-files-in directory))
+        (dolist (file-path (pydyn-path-dynamo-files-in directory))
           (when buffer
             (pydyn-buffer-save buffer 'kill-buffer))
           (setq buffer (pydyn-convert-to-python
@@ -243,7 +198,7 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
 
 
 (defun pydyn-dynamo--node-select-of (node-info)
-  "Return NODE-INFO value used for `completing-read'."
+  "Return propertize name and node-id of NODE-INFO."
   (let ((uuid (plist-get node-info :node-id))
         (name (plist-get node-info :name)))
     (format "%-50s %s" name
@@ -289,15 +244,12 @@ If KILL-BUFFER is non-nil kill buffer afterwards."
 
 
 ;;;###autoload
-(defun pydyn-dynamo-clean-orphan-code-file (file-path ask-for-confirmation)
-  "Delete python files of not existing nodes of Dynamo FILE-PATH.
-If ASK-FOR-CONFIRMATION is non-nil ask for confirmation."
+(defun pydyn-dynamo-clean-orphan-code-file (file-path)
+  "Delete python files of not existing nodes of Dynamo FILE-PATH."
   (interactive (list (if (pydyn-is-dynamo? buffer-file-name)
                          (buffer-file-name)
-                       (pydyn-dynamo-select-file))
-                     t))
-  (when (or (not ask-for-confirmation)
-            (y-or-n-p "Delete orphan python files? "))
+                       (pydyn-dynamo-select-file))))
+  (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
     (pydyn-convert-convert-process-started)
     (unwind-protect
         (pydyn-dynamo--clean-orphan file-path (not (pydyn-is-dynamo? buffer-file-name)))
@@ -307,14 +259,15 @@ If ASK-FOR-CONFIRMATION is non-nil ask for confirmation."
 ;;;###autoload
 (defun pydyn-dynamo-clean-orphan-code-folder (directory)
   "Delete all python files of existing nodes from Dynamo files in DIRECTORY."
-  (interactive (list (read-directory-name
+  (interactive (list (pydyn-config-select-directory
                       "Delete orphan python code from dynamo files in? "
-                      (pydyn-dynamo-select-source-path))))
-  (pydyn-convert-convert-process-started)
-  (unwind-protect
-      (dolist (file-path (pydyn-dynamo-files-in directory t))
-        (pydyn-dynamo--clean-orphan file-path t))
-    (pydyn-convert-convert-process-finished)))
+                      (pydyn-config-select-config-path))))
+  (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
+    (pydyn-convert-convert-process-started)
+    (unwind-protect
+        (dolist (file-path (pydyn-path-dynamo-files-in directory t))
+          (pydyn-dynamo--clean-orphan file-path t))
+      (pydyn-convert-convert-process-finished))))
 
 
 ;;;###autoload
@@ -348,6 +301,7 @@ If ASK-FOR-CONFIRMATION is non-nil ask for confirmation."
     (pydyn-buffer-cache-reset)))
 
 
+;;;###autoload
 (defun pydyn-dynamo-json-config ()
   "Setup JSON file to work for minor modes."
   (setq-local require-final-newline nil
@@ -402,14 +356,14 @@ Functions are called with no arguments."
 
 
 (defvar pydyn-dynamo-enable-predicates
-  (list 'pydyn-source-config-load
+  (list 'pydyn-config-load
         'pydyn-dynamo-indent-width-setup
         'pydyn-dynamo-json-config)
   "Symbols of functions if `pydyn-dynamo-mode' is enabled.")
 
 
 (defvar pydyn-dynamo-disable-predicates
-  (list 'pydyn-source-config-write)
+  (list 'pydyn-config-write)
   "Symbols of functions if `pydyn-dynamo-mode' is disabled.")
 
 
