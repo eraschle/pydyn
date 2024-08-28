@@ -122,6 +122,13 @@
     name))
 
 
+;;;###autoload
+(defun pydyn-dynamo-select-source-path ()
+  "Return source config plist selected by the user."
+  (let ((config (pydyn-dynamo-select-source)))
+    (plist-get config :path)))
+
+
 (defun pydyn-dynamo--add-source-config (file-path)
   "Add source root path for FILE-PATH to `pydyn-source-config-alist'."
   (let* ((file-path (pydyn--dir-path-of file-path))
@@ -171,43 +178,39 @@
 
 
 ;;;###autoload
-(defun pydyn-dynamo-at-point-to-python (switch-or-kill)
-  "Export python code at point and SWITCH-OR-KILL export buffer."
-  (interactive (list (pydyn-choose-switch-or-kill "Python")))
+(defun pydyn-dynamo-at-point-to-python (save-buffer-cb)
+  "Export python code at point and SAVE-BUFFER-CB export buffer."
+  (interactive (list (pydyn-choose-buffer-save-action "Python")))
   (pydyn-is-dynamo-or-error)
   (pydyn-dynamo--ensure-source-config)
   (pydyn-convert-convert-process-started)
-  (let ((switch (pydyn-is-switch switch-or-kill))
-        (other-win (pydyn-is-switch-other switch-or-kill))
-        (kill (pydyn-is-kill switch-or-kill))
-        (buffer nil))
+  (let ((buffer nil))
     (unwind-protect
         (setq buffer (pydyn-convert-node-to-python
                       (pydyn-dynamo--node-info-or-error)
                       'pydyn-python-convert-clean))
       (pydyn-convert-convert-process-finished)
-      (pydyn-buffer-save buffer switch other-win kill))))
+      (pydyn-buffer-save buffer save-buffer-cb))))
 
 
 ;;;###autoload
-(defun pydyn-dynamo-script-to-python (file-path switch-or-kill)
-  "Export python node in FILE-PATH and SWITCH-OR-KILL to export buffer."
+(defun pydyn-dynamo-script-to-python (file-path save-buffer-cb delete-orphan)
+  "Export python node in FILE-PATH and SAVE-BUFFER-CB to export buffer.
+If DELETE-ORPHAN is non-nil delete orphan python files."
   (interactive (list (if (pydyn-is-dynamo? buffer-file-name)
                          (buffer-file-name)
                        (pydyn-dynamo-select-file))
-                     (pydyn-choose-switch-or-kill "Python")))
+                     (pydyn-choose-buffer-save-action "Python")
+                     (y-or-n-p "Delete orphan python files? ")))
   (pydyn-is-dynamo-or-error file-path)
   (pydyn-dynamo--ensure-source-config file-path)
   (pydyn-convert-convert-process-started)
-  (let ((switch (pydyn-is-switch switch-or-kill))
-        (other-win (pydyn-is-switch-other switch-or-kill))
-        (kill (pydyn-is-kill switch-or-kill))
-        (buffer nil))
+  (let ((buffer nil))
     (unwind-protect
         (setq buffer (pydyn-convert-to-python
-                      file-path 'pydyn-python-convert-clean))
+                      file-path 'pydyn-python-convert-clean delete-orphan))
       (pydyn-convert-convert-process-finished)
-      (pydyn-buffer-save buffer switch other-win kill))))
+      (pydyn-buffer-save buffer save-buffer-cb))))
 
 
 (defun pydyn-dynamo-folder-select ()
@@ -218,26 +221,25 @@
     (read-directory-name "Select directory: " source-root)))
 
 ;;;###autoload
-(defun pydyn-dynamo-folder-to-python (&optional directory switch-or-kill)
+(defun pydyn-dynamo-folder-to-python (directory save-buffer-cb delete-orphan)
   "Export all python nodes of Dynamo files in DIRECTORY.
-SWITCH-OR-KILL last export buffer afterwards."
+SAVE-BUFFER-CB last export buffer afterwards.
+If DELETE-ORPHAN is non-nil delete orphan python files."
   (interactive (list (read-directory-name "Export Python of directory? "
                                           default-directory)
-                     (pydyn-choose-switch-or-kill "Python")))
+                     (pydyn-choose-buffer-save-action "Python")
+                     (y-or-n-p "Delete orphan python files? ")))
   (pydyn-dynamo--ensure-source-config directory)
   (pydyn-convert-convert-process-started)
-  (let ((buffer nil)
-        (switch (pydyn-is-switch switch-or-kill))
-        (other-win (pydyn-is-switch-other switch-or-kill))
-        (kill (pydyn-is-kill switch-or-kill)))
+  (let ((buffer nil))
     (unwind-protect
         (dolist (file-path (pydyn-dynamo-files-in directory))
           (when buffer
-            (pydyn-buffer-save buffer nil nil t))
+            (pydyn-buffer-save buffer 'kill-buffer))
           (setq buffer (pydyn-convert-to-python
-                        file-path 'pydyn-python-convert-clean))))
+                        file-path 'pydyn-python-convert-clean delete-orphan))))
     (pydyn-convert-convert-process-finished)
-    (pydyn-buffer-save buffer switch other-win kill)))
+    (pydyn-buffer-save buffer save-buffer-cb)))
 
 
 (defun pydyn-dynamo--node-select-of (node-info)
@@ -278,40 +280,40 @@ SWITCH-OR-KILL last export buffer afterwards."
                           :code-line)))
 
 
-(defun pydyn-dynamo--clean-orphan (file-path)
-  "Delete python file where source node in Dynamo FILE-PATH does not exist anymore."
-  (when (pydyn-json-nodes-exists-p file-path)
-    (let ((export-path (pydyn-python-files-in
-                        (pydyn-path-export-folder file-path)))
-          (node-paths (pydyn-export-path-all file-path)))
-      (dolist (path-wo-src (seq-difference export-path node-paths))
-        (when (file-exists-p path-wo-src)
-          (delete-file path-wo-src nil))))))
+(defun pydyn-dynamo--clean-orphan (dynamo-path kill-buffer)
+  "Delete python files of not existing nodes in DYNAMO-PATH.
+If KILL-BUFFER is non-nil kill buffer afterwards."
+  (when (pydyn-json-nodes-exists-p dynamo-path)
+    (let ((script-nodes (pydyn-python-nodes-in dynamo-path kill-buffer)))
+      (pydyn-convert--clean-orphan script-nodes))))
 
 
 ;;;###autoload
-(defun pydyn-dynamo-clean-orphan-code-file (&optional file-path)
-  "Delete python files of not existing nodes of Dynamo FILE-PATH."
+(defun pydyn-dynamo-clean-orphan-code-file (file-path ask-for-confirmation)
+  "Delete python files of not existing nodes of Dynamo FILE-PATH.
+If ASK-FOR-CONFIRMATION is non-nil ask for confirmation."
   (interactive (list (if (pydyn-is-dynamo? buffer-file-name)
                          (buffer-file-name)
-                       (pydyn-dynamo-select-file))))
-  (when (yes-or-no-p "Are you sure to delete python-files??")
+                       (pydyn-dynamo-select-file))
+                     t))
+  (when (or (not ask-for-confirmation)
+            (y-or-n-p "Delete orphan python files? "))
     (pydyn-convert-convert-process-started)
     (unwind-protect
-        (pydyn-dynamo--clean-orphan file-path)
+        (pydyn-dynamo--clean-orphan file-path (not (pydyn-is-dynamo? buffer-file-name)))
       (pydyn-convert-convert-process-finished))))
 
 
 ;;;###autoload
-(defun pydyn-dynamo-clean-orphan-code-folder (&optional directory)
+(defun pydyn-dynamo-clean-orphan-code-folder (directory)
   "Delete all python files of existing nodes from Dynamo files in DIRECTORY."
   (interactive (list (read-directory-name
                       "Delete orphan python code from dynamo files in? "
-                      default-directory)))
+                      (pydyn-dynamo-select-source-path))))
   (pydyn-convert-convert-process-started)
   (unwind-protect
       (dolist (file-path (pydyn-dynamo-files-in directory t))
-        (pydyn-dynamo--clean-orphan file-path))
+        (pydyn-dynamo--clean-orphan file-path t))
     (pydyn-convert-convert-process-finished)))
 
 

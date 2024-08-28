@@ -73,14 +73,14 @@
 (add-to-list 'minor-mode-alist '(pydyn-python-mode " pydyn-python"))
 (add-to-list 'minor-mode-map-alist (cons 'pydyn-python-mode pydyn-python-mode-map));;
 
-(defun pydyn-python-command-regex-get(checker-n-comment)
+(defun pydyn-python-command-regex-get (checker-n-comment)
   "Return regex for CHECKER-N-COMMENT of comment, like type: ignore."
-  (format "\\(#[ ]?%s[ ]?\\):\\([ ]?%s\\)\\(.*\\))"
+  (format "\\(#[ ]?%s[ ]?\\):\\([ ]?%s\\)\\(.*\\)"
           (s-trim (car checker-n-comment))
           (s-trim (cadr checker-n-comment))))
 
 
-(defun pydyn-python-command-regex(comment)
+(defun pydyn-python-command-regex (comment)
   "Return regex for COMMENT, like type: ignore."
   (let ((wo-hash (s-trim (string-replace "#" "" comment))))
     (pydyn-python-command-regex-get (s-split ":" wo-hash))))
@@ -510,14 +510,11 @@ Return point of match or nil."
   (pydyn-is-python-export-or-error)
   (pydyn-convert-convert-process-started)
   (let ((buffer nil)
-        (switch-or-kill (pydyn-choose-switch-or-kill "Dynamo")))
+        (save-buffer-cb (pydyn-choose-buffer-save-action "Dynamo")))
     (unwind-protect
         (setq buffer (pydyn-python--to-dynamo-node)))
     (pydyn-convert-convert-process-finished)
-    (pydyn-buffer-save buffer
-                       (pydyn-is-switch switch-or-kill)
-                       (pydyn-is-switch-other switch-or-kill)
-                       (pydyn-is-kill switch-or-kill))))
+    (pydyn-buffer-save buffer save-buffer-cb)))
 
 
 (defun pydyn-python--update-message (file-path)
@@ -527,19 +524,16 @@ Return point of match or nil."
 
 
 ;;;###autoload
-(defun pydyn-python-to-dynamo-script (file-path switch-or-kill)
-  "Replace code from FILE-PATH of all Dynamo nodes, SWITCH-OR-KILL buffer."
+(defun pydyn-python-to-dynamo-script (file-path save-buffer-cb)
+  "Replace code from FILE-PATH of all Dynamo nodes, SAVE-BUFFER-CB buffer."
   (interactive (list (if (pydyn-is-python-export? buffer-file-name)
                          (buffer-file-name)
                        (pydyn-python-select-file))
-                     (pydyn-choose-switch-or-kill "Dynamo")))
+                     (pydyn-choose-buffer-save-action "Dynamo")))
   (pydyn-is-python-export-or-error file-path)
   (pydyn-convert-convert-process-started)
   (let ((directory (file-name-directory file-path))
         (buffer-before (current-buffer))
-        (switch (pydyn-is-switch switch-or-kill))
-        (other-win (pydyn-is-switch-other switch-or-kill))
-        (kill (pydyn-is-kill switch-or-kill))
         (buffer nil)
         (dyn-path nil))
     (unwind-protect
@@ -551,21 +545,18 @@ Return point of match or nil."
             (kill-buffer-if-not-modified buffer)))
       (pydyn-convert-convert-process-finished)
       (pydyn-python--update-message dyn-path)
-      (pydyn-buffer-save dyn-path switch other-win kill))))
+      (pydyn-buffer-save dyn-path save-buffer-cb))))
 
 
 ;;;###autoload
-(defun pydyn-python-to-dynamo-folder (directory switch-or-kill)
-  "Replace code in Dynamo of python files in DIRECTORY, SWITCH-OR-KILL last buffer."
+(defun pydyn-python-to-dynamo-folder (directory save-buffer-cb)
+  "Replace code in Dynamo of python files in DIRECTORY, SAVE-BUFFER-CB last buffer."
   (interactive (list (read-directory-name "Replace code in Dynamo source of all python files in? "
                                           pydyn-export-root)
-                     (pydyn-choose-switch-or-kill "Dynamo")))
+                     (pydyn-choose-buffer-save-action "Dynamo")))
   (pydyn-convert-convert-process-started)
   (let ((dyn-path nil)
         (buffer-before (current-buffer))
-        (switch (pydyn-is-switch switch-or-kill))
-        (other-win (pydyn-is-switch-other switch-or-kill))
-        (kill (pydyn-is-kill switch-or-kill))
         (buffer nil))
     (unwind-protect
         (dolist (file-path (pydyn-python-files-in directory t))
@@ -574,13 +565,13 @@ Return point of match or nil."
             (let ((current-dyn (pydyn-python--to-dynamo-node)))
               (unless (or dyn-path (string-equal current-dyn dyn-path))
                 (when (and dyn-path (not (string-equal current-dyn dyn-path)))
-                  (pydyn-buffer-save dyn-path nil nil t)
-                  (pydyn-python--update-message dyn-path))
+                  (pydyn-python--update-message dyn-path)
+                  (pydyn-buffer-save dyn-path 'kill-buffer))
                 (setq dyn-path current-dyn))
               (when (not (equal buffer buffer-before))
                 (kill-buffer-if-not-modified buffer)))))
       (pydyn-convert-convert-process-finished)
-      (pydyn-buffer-save dyn-path switch other-win kill))))
+      (pydyn-buffer-save dyn-path save-buffer-cb))))
 
 
 ;;;###autoload

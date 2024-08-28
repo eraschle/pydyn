@@ -76,14 +76,6 @@
           (pydyn-path-export-file-name node-info)))
 
 
-(defun pydyn-export-path-all (file-path)
-  "Return all export path of FILE-PATH or nil if FILE-PATH is not dynamo-source."
-  (when (pydyn-is-dynamo-source? file-path)
-    (seq-map (lambda (node-info)
-               (pydyn-export-path node-info))
-             (pydyn-python-nodes-in file-path 'kill-buffer))))
-
-
 (defun pydyn-code-in-buffer (buffer node-info &optional callback)
   "Return BUFFER with cleaned code from NODE-INFO.
 CALLBACK is applied to clean exported code."
@@ -157,14 +149,28 @@ CALLBACK is applied to clean exported code."
       (current-buffer))))
 
 
-(defun pydyn-convert-to-python (file-path clean-cb)
-  "Return buffer of last exported python node in FILE-PATH.
-CLEAN-CB is applied to clean exported code. Unless last buffer,
-  buffer will be saved and killed"
-  (let ((last-export nil))
-    (dolist (node-info (pydyn-python-nodes-in file-path nil :name))
+(defun pydyn-convert--clean-orphan (dynamo-nodes)
+  "Delete python files in FILE-PATH that are not in DYNAMO-NODES."
+  (let* ((dynamo-path (plist-get (seq-first dynamo-nodes) :path))
+         (python-files (pydyn-python-files-in
+                        (pydyn-path-export-folder dynamo-path)))
+         (node-paths (seq-map 'pydyn-export-path dynamo-nodes)))
+    (dolist (to-delete (seq-difference python-files node-paths))
+      (when (file-exists-p to-delete)
+        (delete-file to-delete nil)))))
+
+
+(defun pydyn-convert-to-python (dynamo-path clean-cb delete-orphan)
+  "Export all python nodes to python files and apply CLEAN-CB in DYNAMO-PATH.
+Unless last buffer,buffer will be saved and killed.
+If DELETE-ORPHAN is non-nil, delete orphan python files."
+  (let ((last-export nil)
+        (script-nodes (pydyn-python-nodes-in dynamo-path nil)))
+    (when delete-orphan
+      (pydyn-convert--clean-orphan script-nodes))
+    (dolist (node-info script-nodes)
       (when last-export
-        (pydyn-buffer-save last-export nil nil t))
+        (pydyn-buffer-save last-export 'kill-buffer))
       (setq last-export (pydyn-convert-node-to-python
                          node-info clean-cb)))
     last-export))

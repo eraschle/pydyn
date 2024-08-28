@@ -84,19 +84,23 @@
       (create-file-buffer path)))
 
 
+(defun pydyn-choose-buffer-save-action (name)
+  "Return User selection buffer of NAME (Python/Dynamo)."
+  (pydyn-choose-get (list 'kill-buffer 'switch-to-buffer 'switch-to-buffer-other-window)
+                    (format "Choose action for %s buffer?: " name)))
+
+
 ;;;###autoload
-(defun pydyn-buffer-save (buffer-or-path &optional switch other-windows kill)
-  "Save BUFFER-OR-PATH if modified and SWITCH, OTHER-WINDOWS or KILL it if non-nil."
+(defun pydyn-buffer-save (buffer-or-path &optional action-cb)
+  "Save BUFFER-OR-PATH buffer if modified and call ACTION-CB if non-nil."
   (let ((buffer (if (bufferp buffer-or-path)
                     buffer-or-path
                   (pydyn-buffer-by buffer-or-path))))
     (when (buffer-modified-p buffer)
       (with-current-buffer buffer
         (save-buffer 1)))
-    (cond (switch (switch-to-buffer buffer))
-          (other-windows (switch-to-buffer-other-window buffer))
-          (kill (kill-buffer buffer))
-          (t nil))))
+    (when (and action-cb (buffer-live-p buffer))
+      (funcall action-cb buffer))))
 
 
 (defun pydyn-buffer-substring (start end &optional with-properties)
@@ -176,34 +180,6 @@ PROMPT is show to user and INITIAL-INPUT is pre selected if non-nil."
   (let ((completions-format 'vertical)
         (completions-sort 'alphabetical))
     (completing-read prompt choose-list nil t initial-input)))
-
-
-(defun pydyn-choose-switch-or-kill (name)
-  "Return User selection buffer of NAME (Python/Dynamo)."
-  (let ((kill (format "Kill %s buffer." name))
-        (switch (format "Switch to %s buffer (same window)." name))
-        (switch-other (format "Switch to %s buffer (other window)." name)))
-    (let ((selected (pydyn-choose-get (list switch-other switch kill)
-                                      "Choose action?: ")))
-      (cond ((equal selected kill) 'kill)
-            ((equal selected switch) 'switch)
-            ((equal selected switch-other) 'switch-other)
-            (t nil)))))
-
-
-(defun pydyn-is-switch (result)
-  "Return non-nil when SWITCH buffer is equal RESULT."
-  (equal result 'switch))
-
-
-(defun pydyn-is-switch-other (result)
-  "Return non-nil when SWITCH-OTHER is equal RESULT."
-  (equal result 'switch-other))
-
-
-(defun pydyn-is-kill (result)
-  "Return non-nil if KILL buffer is equal RESULT."
-  (equal result 'kill))
 
 
 (defvar pydyn-processing nil

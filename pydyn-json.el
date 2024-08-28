@@ -320,22 +320,23 @@ If AS-STRING is non-nil value contain with surrounding \"."
 
 (defun pydyn-python-nodes-get (&optional sort-prop)
   "Return PLIST of python nodes in current buffer sorted by SORT-PROP."
-  (let ((sort-prop (or sort-prop :code-line)))
-    (seq-sort (lambda (node other)
-                (if (stringp (plist-get node sort-prop))
-                    (string-greaterp (plist-get node sort-prop)
-                                     (plist-get other sort-prop))
-                  (> (plist-get node sort-prop)
-                     (plist-get other sort-prop))))
-              (pydyn--json-node-infos buffer-file-name))))
+  (if sort-prop
+      (seq-sort (lambda (node other)
+                  (if (stringp (plist-get node sort-prop))
+                      (string-greaterp (plist-get node sort-prop)
+                                       (plist-get other sort-prop))
+                    (> (plist-get node sort-prop)
+                       (plist-get other sort-prop))))
+                (pydyn--json-node-infos buffer-file-name))
+    (pydyn--json-node-infos buffer-file-name)))
 
 
-(defun pydyn-python-nodes-in (file-path kill-buffer &optional sort-prop)
-  "Return plist of python nodes in FILE-PATH sorted by SORT-PROP.
-If KILL-BUFFER is non-nil buffer is killed after reading nodes."
+(defun pydyn-python-nodes-in (file-path do-kill-buffer)
+  "Return plist of python nodes in FILE-PATH.
+If DO-KILL-BUFFER is non-nil buffer is killed after reading nodes."
   (with-current-buffer (pydyn-buffer-by file-path)
-    (let ((nodes (pydyn-python-nodes-get sort-prop)))
-      (when kill-buffer
+    (let ((nodes (pydyn-python-nodes-get)))
+      (when do-kill-buffer
         (kill-buffer))
       nodes)))
 
