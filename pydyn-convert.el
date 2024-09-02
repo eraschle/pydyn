@@ -80,7 +80,7 @@
   "Return BUFFER with cleaned code from NODE-INFO.
 CALLBACK is applied to clean exported code."
   (let ((engine (plist-get node-info :engine))
-        (code (pydyn-dynamo-decode
+        (code (pydyn-json-decode
                (plist-get node-info :code))))
     (with-current-buffer buffer
       (let ((coding-system-for-read 'utf-8)
@@ -149,6 +149,37 @@ CALLBACK is applied to clean exported code."
       (current-buffer))))
 
 
+(defun pydyn-convert--export-paths-for (dynamo-files)
+  "Return list of export folders for DYNAMO-FILES."
+  (seq-map #'pydyn-path-export-folder dynamo-files))
+
+
+(defun pydyn-convert--root-folder-of (dynamo-folders)
+  "Return root folder of DYNAMO-FOLDERS."
+  (let ((sorted-path (sort dynamo-folders #'string-greaterp)))
+    (file-name-parent-directory (seq-first sorted-path))))
+
+
+(defun pydyn-convert--python-folder-in (export-root)
+  "Return list of python folders in export path of EXPORT-ROOT."
+  (seq-uniq (seq-map #'pydyn-config-as-dir-path
+                     (directory-files-recursively
+                      export-root ".*py.*" nil))))
+
+
+(defun pydyn-convert-delete-orphan-folder (dynamo-files)
+  "Delete all python folders are not existing in DYNAMO-FILES."
+  (let* ((export-folders (pydyn-convert--export-paths-for dynamo-files))
+         (export-root (pydyn-convert--root-folder-of export-folders))
+         (python-folders (pydyn-convert--python-folder-in export-root)))
+    (message "Root folder: %s" export-root)
+    (dolist (to-delete (seq-difference python-folders export-folders))
+      (dolist (file (directory-files-recursively to-delete "*.*" t))
+        (delete-file file t))
+      (delete-directory to-delete t)
+      (message "Deleted orphan folder: %s" to-delete))))
+
+
 (defun pydyn-convert--clean-orphan (dynamo-nodes)
   "Delete python files in FILE-PATH that are not in DYNAMO-NODES."
   (let* ((dynamo-path (plist-get (seq-first dynamo-nodes) :path))
@@ -157,6 +188,7 @@ CALLBACK is applied to clean exported code."
          (node-paths (seq-map 'pydyn-export-path dynamo-nodes)))
     (dolist (to-delete (seq-difference python-files node-paths))
       (when (file-exists-p to-delete)
+        (message "Delete orphan python file: %s" to-delete)
         (delete-file to-delete nil)))))
 
 
@@ -188,7 +220,7 @@ If DELETE-ORPHAN is non-nil, delete orphan python files."
         (delete-line))
       (delete-trailing-whitespace (point-min) (point-max))
       ;; Dynamo use always tabs and \n in JSON string...
-      (pydyn-dynamo-encode
+      (pydyn-json-encode
        (string-trim (pydyn-buffer-substring (point-min) (point-max))
                     "[\n]+" "[\n]+")))))
 

@@ -93,6 +93,13 @@
       (pydyn-config-add-config file-path))))
 
 
+(defun pydyn-is-dynamo-or-error (&optional file-path)
+  "Throw user error when `pydyn-is-dynamo?' return nil with FILE-PATH argurment."
+  (let ((file-path (pydyn-path-get file-path)))
+    (unless (pydyn-is-dynamo? file-path)
+      (user-error "%s is NOT a Dynamo file" (file-name-base file-path)))))
+
+
 ;;;###autoload
 (defun pydyn-dynamo-goto-python ()
   "Switch to Python file of code at current point if exists."
@@ -265,8 +272,10 @@ If KILL-BUFFER is non-nil kill buffer afterwards."
   (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
     (pydyn-convert-convert-process-started)
     (unwind-protect
-        (dolist (file-path (pydyn-path-dynamo-files-in directory t))
-          (pydyn-dynamo--clean-orphan file-path t))
+        (let ((dynamo-files (pydyn-path-dynamo-files-in directory t)))
+          (pydyn-convert-delete-orphan-folder dynamo-files)
+          (dolist (file-path dynamo-files)
+            (pydyn-dynamo--clean-orphan file-path t)))
       (pydyn-convert-convert-process-finished))))
 
 

@@ -69,15 +69,6 @@
   (or file-path buffer-file-name))
 
 
-(defun pydyn--dir-path-of (path)
-  "Return absolute PATH."
-  (cond ((string-prefix-p "~" path) (file-name-as-directory
-                                     (expand-file-name path)))
-        ((not (directory-name-p path)) (file-name-as-directory path))
-        ((not (file-directory-p path)) (file-name-parent-directory path))
-        (t path)))
-
-
 (defun pydyn--path-is-ext? (file-path extensions)
   "Return non-nil if FILE-PATH extension exists in EXTENSIONS."
   (when file-path
@@ -107,14 +98,6 @@
         (pydyn-dynamo-is-custom? file-path))))
 
 
-;;;###autoload
-(defun pydyn-is-dynamo-or-error (&optional file-path)
-  "Throw user error when `pydyn-is-dynamo?' return nil with FILE-PATH argurment."
-  (let ((file-path (pydyn-path-get file-path)))
-    (unless (pydyn-is-dynamo? file-path)
-      (user-error "%s is NOT a Dynamo file" (file-name-base file-path)))))
-
-
 (defun pydyn-is-dynamo-source? (&optional file-path)
   "Return non-nil when FILE-PATH is sub-path of any config and is dynamo file.
 `pydyn-is-source?' and `pydyn-is-dynamo?' with FILE-PATH argument
@@ -140,13 +123,6 @@ and both must return non-nil."
   "Return non-nil when FILE-PATH or current buffer is PYTHON."
   (pydyn--path-is-ext? (pydyn-path-get file-path)
                        pydyn-python-extension))
-
-
-(defun pydyn-is-python-export-or-error (&optional file-path)
-  "Throw user error if FILE-PATH or current buffer is not a python-file."
-  (let ((file-path (pydyn-path-get file-path)))
-    (unless (pydyn-is-python-export? file-path)
-      (user-error "%s is NOT a Python file" (file-name-base file-path)))))
 
 
 (defun pydyn--buffer-for-get (file-path)
@@ -187,6 +163,25 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
     (seq-reverse (flatten-list files))))
 
 
+(defun pydyn-path-python-files-in (path &optional recursive)
+  "Return python files in PATH, RECURSIVE search if non-nil."
+  (pydyn--files-in-directory (pydyn--path-export-folder-for path)
+                             pydyn-python-extension
+                             recursive))
+
+
+(defun pydyn-path-dynamo-files-in (directory &optional recursive)
+  "Return Dynamo files in DIRECTORY, RECURSIVE search if non-nil."
+  (let ((files (pydyn--files-in-directory directory
+                                          (list pydyn-dynamo-custom-ext
+                                                pydyn-dynamo-script-ext)
+                                          recursive)))
+    (when pydyn-source-is-file-alist
+      (dolist (func pydyn-source-is-file-alist)
+        (setq files (apply func files))))
+    files))
+
+
 (defun pydyn-path-export-path-for (config)
   "Return export path for CONFIG."
   (concat pydyn-config-export-path
@@ -211,25 +206,6 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
     (pydyn--path-export-folder-for-source file-path)))
 
 
-(defun pydyn-path-python-files-in (path &optional recursive)
-  "Return python files in PATH, RECURSIVE search if non-nil."
-  (pydyn--files-in-directory (pydyn--path-export-folder-for path)
-                             pydyn-python-extension
-                             recursive))
-
-
-(defun pydyn-path-dynamo-files-in (directory &optional recursive)
-  "Return Dynamo files in DIRECTORY, RECURSIVE search if non-nil."
-  (let ((files (pydyn--files-in-directory directory
-                                          (list pydyn-dynamo-custom-ext
-                                                pydyn-dynamo-script-ext)
-                                          recursive)))
-    (when pydyn-source-is-file-alist
-      (dolist (func pydyn-source-is-file-alist)
-        (setq files (apply func files))))
-    files))
-
-
 (defun pydyn-path-export-folder (node-path)
   "Return export directory path for NODE-PATH. Create directory if not exist."
   (let ((export-dir (pydyn--path-export-folder-for node-path)))
@@ -238,25 +214,21 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
     export-dir))
 
 
-(defvar pydyn-path-clean-lookup (list " " "<" ">" "?" "|" "*" "/" "\\" "\"")
-  "Not allowed characters in for directory or file path.")
+(defvar pydyn-path-regex-illegal-char "[<>:\"/\\|?* ]+"
+  "Regex to match illegal characters in path.")
 
 
 (defvar pydyn-path-name-separator "_"
-  "Character to separate names and not allowed names.")
+  "Replacement for illegal characters in path.")
 
 
-(defun pydyn--path-clean-name (value)
-  "Return cleaned VALUE with all `pydyn-path-clean-lookup' replaced."
-  (dolist (replace-value pydyn-path-clean-lookup)
-    (setq value (string-replace replace-value
-                                pydyn-path-name-separator
-                                value)))
-  ;; Because of multiple replacements is it
-  ;; possible to have more then connected.
-  (replace-regexp-in-string
-   "[_]+" "_" (replace-regexp-in-string
-               "[__]+" "_" value)))
+(defun pydyn-path--sanitize-name (name)
+  "Return cleaned NAME from illegal characters."
+  (let ((name (replace-regexp-in-string
+               pydyn-path-regex-illegal-char
+               pydyn-path-name-separator name))
+        (trim (format "[%s]*" pydyn-path-name-separator)))
+    (string-trim name trim trim)))
 
 
 (defun pydyn--path-py-abbrev-of (node-info)
@@ -269,9 +241,9 @@ Unless FILE-PATH is `current-buffer', new buffer will be created."
 (defun pydyn-path-export-name (node-info)
   "Return export name created from NODE-INFO."
   (s-join pydyn-path-name-separator ;; join names together with _
-          (list (pydyn--path-clean-name (plist-get node-info :name))
+          (list (pydyn-path--sanitize-name (plist-get node-info :name))
                 (pydyn--path-py-abbrev-of node-info)
-                (pydyn--path-clean-name (plist-get node-info :node-id)))))
+                (pydyn-path--sanitize-name (plist-get node-info :node-id)))))
 
 
 (defun pydyn-path-export-file-name (node-info)

@@ -36,7 +36,16 @@
     (let ((pydyn-python-2-engine "py2"))
       (expect (pydyn-is-python-2? "py2") :to-be t))))
 
+
 (ert-deftest pydyn-is-python-3-test ()
   (should-not (pydyn-is-python-3? nil))
   (let ((pydyn-python-3-engine "py3"))
     (should (pydyn-is-python-3? "py3"))))
+
+
+
+(describe "sanitizing file names"
+  (it "should remove special characters in file names"
+    (expect (pydyn-path--sanitize-name "\\_file><name/with?*special\"chars___") :to-equal "file_name_with_special_chars"))
+  (it "should not remove special characters in uuid"
+    (expect (pydyn-path--sanitize-name "40f316df-793b-4208-bec4-632514a75d62") :to-equal "40f316df-793b-4208-bec4-632514a75d62")))

@@ -40,9 +40,9 @@
                     (ensure-list pydyn-keymap-prefix)
                     (ensure-list keys)))))
 
-
 ;;;###autoload
-(defcustom pydyn-dynamo-input-regex "IN[^ -][^A-Za-z]\\(\[[0-9]+\]\\)?"
+;;;
+(defcustom pydyn-dynamo-input-regex "\\(IN\\[[0-9]+\\]\\|IN[^A-Za-z -]+\\)"
   "Regex for IN[0] variable in Dynamo Python scripts."
   :type 'string
   :group 'pydyn)

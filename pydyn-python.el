@@ -389,10 +389,28 @@ Return point of match or nil."
         (pydyn-while-search search-for pydyn-python-type-ignore-func)))))
 
 
+(defcustom pydyn-to-python-convert-func-alist
+  (list #'pydyn-python-ignore-to-inputs
+        #'pydyn-python-ignore-to-errors)
+  "List of functions executed in dynamo to python conversion.
+The buffer contains the converted python code.
+The functions are called with no arguments."
+  :group 'pydyn
+  :tag "Functions to convert python to dynamo"
+  :type '(repeat (symbol :tag "Function")))
+
+
 (defun pydyn-python-convert-clean ()
   "Remove any python comment in current buffer."
-  (pydyn-python-delete-comment-lines)
-  (pydyn-python-ignore-to-errors))
+  (when (pydyn-is-python?)
+    (seq-do #'funcall pydyn-to-python-convert-func-alist)))
+
+
+(defun pydyn-is-python-export-or-error (&optional file-path)
+  "Throw user error if FILE-PATH or current buffer is not a python-file."
+  (let ((file-path (pydyn-path-get file-path)))
+    (unless (pydyn-is-python-export? file-path)
+      (user-error "%s is NOT a Python file" (file-name-base file-path)))))
 
 
 ;;;###autoload
@@ -408,12 +426,23 @@ Return point of match or nil."
       (save-buffer)))
 
 
+(defcustom pydyn-convert-to-dynamo-func-alist
+  (list #'pydyn-python-ignore-clean-buffer
+        #'pydyn-python-formatter-clean-buffer)
+  "List of functions executed in python to dynamo conversion.
+The buffer contains the current python code and will converted afterwwards.
+The functions are called with no arguments."
+  :group 'pydyn
+  :tag "Functions to clean up python code."
+  :type '(repeat (symbol :tag "Function")))
+
+
 ;;;###autoload
-(defun pydyn-python-buffer-clean ()
-  "Remove special python comments in current buffer."
-  (interactive)
-  (pydyn-python-ignore-clean-buffer)
-  (pydyn-python-formatter-clean-buffer))
+(defun pydyn-python-buffer-clean (&optional not-is-python-check)
+  "Remove special python comments in current buffer.
+If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode."
+  (when (or not-is-python-check (pydyn-is-python?))
+    (seq-do #'funcall pydyn-convert-to-dynamo-func-alist)))
 
 
 (defcustom pydyn-python-inside-bracket-regex "(\\(.*?\\))"
@@ -479,12 +508,15 @@ Return point of match or nil."
       (query-replace-regexp pydyn-python-if-bracket-regex "if \\1:"))))
 
 
-(defun pydyn-python-dynamo-exists-or-error (file-path)
-  "Throw user error if FILE-PATH not exists or is not a Dynamo file."
-  (let ((file-name (file-name-base file-path)))
-    (unless (file-exists-p file-path)
+(defun pydyn-python-dynamo-exists-or-error ()
+  "Throw user error if current buffer has no Dynamo file."
+  (unless node-path
+    (user-error "No Dynamo file selected (Is export path %s"
+                (pydyn-is-python-export? buffer-file-name)))
+  (let ((file-name (file-name-base node-path)))
+    (unless (file-exists-p node-path)
       (user-error "%s does not exists" file-name))
-    (unless (pydyn-is-dynamo? file-path)
+    (unless (pydyn-is-dynamo? node-path)
       (user-error "%s is NOT a Dynamo file" file-name))))
 
 
@@ -492,9 +524,7 @@ Return point of match or nil."
 (defun pydyn-python-goto-dynamo-node ()
   "Goto to source file and try to select code at point in source."
   (interactive)
-  (unless (pydyn-is-python-export? buffer-file-name)
-    (user-error "Not a python export file"))
-  (pydyn-python-dynamo-exists-or-error buffer-file-name)
+  (pydyn-python-dynamo-exists-or-error)
   (pydyn-goto-code (pydyn-convert-to-dynamo
                     (pydyn-current-line))))
 
@@ -505,7 +535,7 @@ Return point of match or nil."
     (with-temp-buffer
       (insert code)
       (goto-char (point-min))
-      (pydyn-python-buffer-clean)
+      (pydyn-python-buffer-clean 'not-is-python-check)
       (buffer-string))))
 
 
@@ -540,19 +570,19 @@ Return point of match or nil."
 
 (defun pydyn-python--select-file ()
   "Return selected dynamo file path by user."
-  (let* ((config (pydyn-config-select-config-path))
-         (export-path (pydyn-path-export-path-for config))
-         (files (pydyn-path-python-files-in export-path t)))
-    (pydyn-selection-get files "Select Python file: "
-                         (list export-path))))
+  (if (pydyn-is-python-export? buffer-file-name)
+      (buffer-file-name)
+    (let* ((config (pydyn-config-select-config-path))
+           (export-path (pydyn-path-export-path-for config))
+           (files (pydyn-path-python-files-in export-path t)))
+      (pydyn-selection-get files "Select Python file: "
+                           (list export-path)))))
 
 
 ;;;###autoload
 (defun pydyn-python-to-dynamo-script (file-path save-buffer-cb)
   "Replace code from FILE-PATH of all Dynamo nodes, SAVE-BUFFER-CB buffer."
-  (interactive (list (if (pydyn-is-python-export? buffer-file-name)
-                         (buffer-file-name)
-                       (pydyn-python--select-file))
+  (interactive (list (pydyn-python--select-file)
                      (pydyn-choose-buffer-save-action "Dynamo")))
   (pydyn-is-python-export-or-error file-path)
   (pydyn-convert-convert-process-started)
@@ -602,13 +632,12 @@ Return point of match or nil."
           (setq buffer (pydyn-buffer-by file-path))
           (with-current-buffer buffer
             (let ((current-dyn (pydyn-python--to-dynamo-node)))
-              (unless (or dyn-path (string-equal current-dyn dyn-path))
-                (when (and dyn-path (not (string-equal current-dyn dyn-path)))
-                  (pydyn-python--update-message dyn-path)
-                  (pydyn-buffer-save dyn-path 'kill-buffer))
-                (setq dyn-path current-dyn))
-              (when (not (equal buffer buffer-before))
-                (kill-buffer-if-not-modified buffer)))))
+              (when (and dyn-path (not (string-equal current-dyn dyn-path)))
+                (pydyn-python--update-message dyn-path)
+                (pydyn-buffer-save dyn-path 'kill-buffer))
+              (setq dyn-path current-dyn))
+            (unless (equal buffer buffer-before)
+              (kill-buffer-if-not-modified buffer))))
       (pydyn-convert-convert-process-finished)
       (pydyn-buffer-save dyn-path save-buffer-cb))))
 
