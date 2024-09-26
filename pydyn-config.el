@@ -294,33 +294,33 @@ If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
 (defun pydyn-config--check-and-report-equal (configs not-report)
   "Report if CONFIGS already exists in `pydyn-config--alist'.
 If NOT-REPORT is non-nil do not report."
-  (pydyn-config--do-check-and-report
-   configs #'pydyn-config-source-equal?
-   (if not-report nil "Source already exists")))
+  (let ((report (if not-report nil "Source already exists")))
+    (pydyn-config--do-check-and-report
+     configs #'pydyn-config-source-equal? report)))
 
 
 (defun pydyn-config--check-and-report-equal-name (configs not-report)
   "Report if source name in CONFIGS already exists in `pydyn-config--alist'.
 If NOT-REPORT is non-nil do not report."
-  (pydyn-config--do-check-and-report
-   configs #'pydyn-config-source-name-exists?
-   (if not-report nil "Source name already exists")))
+  (let ((report (if not-report nil "Source name already exists")))
+    (pydyn-config--do-check-and-report
+     configs #'pydyn-config-source-name-exists? report)))
 
 
 (defun pydyn-config--check-and-report-equal-path (configs not-report)
   "Report if path in CONFIGS already exists in `pydyn-config--alist'.
 If NOT-REPORT is non-nil do not report."
-  (pydyn-config--do-check-and-report
-   configs #'pydyn-config-source-path-exists?
-   (if not-report nil "Source path already exists")))
+  (let ((report (if not-report nil "Source path already exists")))
+    (pydyn-config--do-check-and-report
+     configs #'pydyn-config-source-path-exists? report)))
 
 
 (defun pydyn-config--check-and-report (configs not-report)
   "Check if CONFIGS can be added to `pydyn-config--alist'.
 If NOT-REPORT is non-nil do not report."
-  (dolist (check-func '(pydyn-config--check-and-report-equal
-                        pydyn-config--check-and-report-equal-name
-                        pydyn-config--check-and-report-equal-path))
+  (dolist (check-func (list 'pydyn-config--check-and-report-equal
+                            'pydyn-config--check-and-report-equal-name
+                            'pydyn-config--check-and-report-equal-path))
     (setq configs (funcall check-func configs not-report)))
   configs)
 
