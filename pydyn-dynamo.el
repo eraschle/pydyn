@@ -4,7 +4,7 @@
 ;; Permission is hereby granted, free of charge, to any person obtaining a copy
 ;; of this software and associated documentation files (the "Software"), to deal
 ;; in the Software without restriction, including without limitation the rights
-;; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+;; to use, copy, modify, merge, publish, distribute, sub-license, and/or sell
 ;; copies of the Software, and to permit persons to whom the Software is
 ;; furnished to do so, subject to the following conditions:
 
@@ -42,7 +42,7 @@
 
 
 (defun pydyn-dynamo--mode-map-create ()
-  "Define mode keymap."
+  "Define mode key-map."
   (let ((key-map (make-sparse-keymap)))
     (define-key key-map (pydyn-dynamo-key "m") #'pydyn-dynamo-mode-on)
     (define-key key-map (pydyn-dynamo-key "M") #'pydyn-dynamo-mode-off)
@@ -60,7 +60,7 @@
 
 
 (defvar pydyn-dynamo-mode-map (pydyn-dynamo--mode-map-create)
-  "Keymap for dynpy minor mode.")
+  "Key-map for pydyn minor mode.")
 
 (add-to-list 'minor-mode-alist '(pydyn-dynamo-mode " pydyn-dynamo"))
 (add-to-list 'minor-mode-map-alist (cons 'pydyn-dynamo-mode pydyn-dynamo-mode-map));;
@@ -94,7 +94,7 @@
 
 
 (defun pydyn-is-dynamo-or-error (&optional file-path)
-  "Throw user error when `pydyn-is-dynamo?' return nil with FILE-PATH argurment."
+  "Throw user error when `pydyn-is-dynamo?' return nil with FILE-PATH argument."
   (let ((file-path (pydyn-path-get file-path)))
     (unless (pydyn-is-dynamo? file-path)
       (user-error "%s is NOT a Dynamo file" (file-name-base file-path)))))
@@ -167,12 +167,12 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
                      (y-or-n-p "Delete orphan python files? ")))
   (pydyn-is-dynamo-or-error file-path)
   (pydyn-dynamo--ensure-source-config file-path)
-  (pydyn-convert-convert-process-started)
+  (pydyn-convert-process-started)
   (let ((buffer nil))
     (unwind-protect
         (setq buffer (pydyn-convert-to-python
                       file-path 'pydyn-python-convert-clean delete-orphan))
-      (pydyn-convert-convert-process-finished)
+      (pydyn-convert-process-finished)
       (pydyn-buffer-save buffer save-buffer-cb))))
 
 
@@ -180,7 +180,7 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
   "Return source path to export python files from Dynamo files."
   (let ((source-root (pydyn-config-select-config-path)))
     (pydyn-config-select-directory
-     "Select source to export python file from Dynamo Contentw? " source-root)))
+     "Select source to export python file from Dynamo Content? " source-root)))
 
 
 ;;;###autoload
@@ -192,7 +192,7 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
                      (pydyn-choose-buffer-save-action "Python")
                      (y-or-n-p "Delete orphan python files? ")))
   (pydyn-dynamo--ensure-source-config directory)
-  (pydyn-convert-convert-process-started)
+  (pydyn-convert-process-started)
   (let ((buffer nil))
     (unwind-protect
         (dolist (file-path (pydyn-path-dynamo-files-in directory))
@@ -200,7 +200,7 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
             (pydyn-buffer-save buffer 'kill-buffer))
           (setq buffer (pydyn-convert-to-python
                         file-path 'pydyn-python-convert-clean delete-orphan))))
-    (pydyn-convert-convert-process-finished)
+    (pydyn-convert-process-finished)
     (pydyn-buffer-save buffer save-buffer-cb)))
 
 
@@ -257,10 +257,10 @@ If KILL-BUFFER is non-nil kill buffer afterwards."
                          (buffer-file-name)
                        (pydyn-dynamo-select-file))))
   (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
-    (pydyn-convert-convert-process-started)
+    (pydyn-convert-process-started)
     (unwind-protect
         (pydyn-dynamo--clean-orphan file-path (not (pydyn-is-dynamo? buffer-file-name)))
-      (pydyn-convert-convert-process-finished))))
+      (pydyn-convert-process-finished))))
 
 
 ;;;###autoload
@@ -270,13 +270,13 @@ If KILL-BUFFER is non-nil kill buffer afterwards."
                       "Delete orphan python code from dynamo files in? "
                       (pydyn-config-select-config-path))))
   (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
-    (pydyn-convert-convert-process-started)
+    (pydyn-convert-process-started)
     (unwind-protect
         (let ((dynamo-files (pydyn-path-dynamo-files-in directory t)))
           (pydyn-convert-delete-orphan-folder dynamo-files)
           (dolist (file-path dynamo-files)
             (pydyn-dynamo--clean-orphan file-path t)))
-      (pydyn-convert-convert-process-finished))))
+      (pydyn-convert-process-finished))))
 
 
 ;;;###autoload

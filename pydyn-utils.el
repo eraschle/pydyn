@@ -225,7 +225,7 @@ PROMPT is show to user and INITIAL-INPUT is pre selected if non-nil."
 
 
 ;;;###autoload
-(defun pydyn-convert-convert-process-started ()
+(defun pydyn-convert-process-started ()
   "Function to start convert process and run `pydyn-process-start-hook'."
   (unless pydyn-processing
     (setq lsp-disabled-clients pydyn-process-lsp-client-disabled)
@@ -234,7 +234,7 @@ PROMPT is show to user and INITIAL-INPUT is pre selected if non-nil."
 
 
 ;;;###autoload
-(defun pydyn-convert-convert-process-finished ()
+(defun pydyn-convert-process-finished ()
   "Function clean up after convert process and run `pydyn-process-end-hook'."
   (setq pydyn-processing nil)
   (run-hooks 'pydyn-process-end-hook)

@@ -4,7 +4,7 @@
 ;; Permission is hereby granted, free of charge, to any person obtaining a copy
 ;; of this software and associated documentation files (the "Software"), to deal
 ;; in the Software without restriction, including without limitation the rights
-;; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+;; to use, copy, modify, merge, publish, distribute, sub-license, and/or sell
 ;; copies of the Software, and to permit persons to whom the Software is
 ;; furnished to do so, subject to the following conditions:
 
@@ -45,7 +45,7 @@
 
 
 (defun pydyn-python--mode-map-create ()
-  "Define python keymap."
+  "Define python key-map."
   (let ((key-map (make-sparse-keymap)))
     (define-key key-map (pydyn-python-key "m") #'pydyn-python-mode-on)
     (define-key key-map (pydyn-python-key "M") #'pydyn-python-mode-off)
@@ -68,7 +68,7 @@
 
 
 (defvar pydyn-python-mode-map (pydyn-python--mode-map-create)
-  "The keymap for pydyn-python-mode.")
+  "The key-map for pydyn-python-mode.")
 
 (add-to-list 'minor-mode-alist '(pydyn-python-mode " pydyn-python"))
 (add-to-list 'minor-mode-map-alist (cons 'pydyn-python-mode pydyn-python-mode-map));;
@@ -181,7 +181,7 @@
 
 
 (defcustom pydyn-python-formatter-on nil
-  "Comment for enable formatter in upcoming lines."
+  "Comment for enable formatting in upcoming lines."
   :type 'string
   :group 'pydyn)
 
@@ -204,19 +204,19 @@
 
 
 (defcustom pydyn-python-formatter-off nil
-  "Comment to disable formatter until `pydyn-python-formatter-off'."
+  "Comment to disable formatting until `pydyn-python-formatter-off'."
   :type 'string
   :group 'pydyn)
 
 (defun pydyn-python-formatter-set-p ()
-  "Return non-nil if python formatter strings are set."
+  "Return non-nil if python formatting strings are set."
   (and pydyn-python-formatter-on pydyn-python-formatter-off))
 
 
 (defun pydyn-python-formatter-set-or-error ()
-  "Raise error if python formatter strings are not set."
+  "Raise error if python formatting strings are not set."
   (unless (pydyn-python-formatter-set-p)
-    (error "Python formatter comments not set")))
+    (error "Python formatting comments not set")))
 
 
 (defun pydyn-python-formatter-add-off (start-point)
@@ -292,7 +292,7 @@ Return point of match or nil."
 
 ;;;###autoload
 (defun pydyn-python-formatter-enable ()
-  "Remove formatter comment if point is between OFF / ON comment."
+  "Remove formatting comment if point is between OFF / ON comment."
   (interactive)
   (pydyn-python-formatter-set-or-error)
   (when (pydyn-python-formatter-is-inside?)
@@ -306,7 +306,7 @@ Return point of match or nil."
 
 ;;;###autoload
 (defun pydyn-python-formatter-clean-buffer ()
-  "Remove formatter comment in current buffer."
+  "Remove formatting comment in current buffer."
   (interactive)
   (when (pydyn-python-formatter-set-p)
     (save-excursion
@@ -430,7 +430,7 @@ The functions are called with no arguments."
   (list #'pydyn-python-ignore-clean-buffer
         #'pydyn-python-formatter-clean-buffer)
   "List of functions executed in python to dynamo conversion.
-The buffer contains the current python code and will converted afterwwards.
+The buffer contains the current python code and will converted afterwards.
 The functions are called with no arguments."
   :group 'pydyn
   :tag "Functions to clean up python code."
@@ -522,7 +522,7 @@ If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode.
 
 ;;;###autoload
 (defun pydyn-python-goto-dynamo-node ()
-  "Goto to source file and try to select code at point in source."
+  "Go-to to source file and try to select code at point in source."
   (interactive)
   (pydyn-python-dynamo-exists-or-error)
   (pydyn-goto-code (pydyn-convert-to-dynamo
@@ -551,12 +551,12 @@ If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode.
   "Replace code from `current-buffer' in dynamo source file."
   (interactive)
   (pydyn-is-python-export-or-error)
-  (pydyn-convert-convert-process-started)
+  (pydyn-convert-process-started)
   (let ((buffer nil)
         (save-buffer-cb (pydyn-choose-buffer-save-action "Dynamo")))
     (unwind-protect
         (setq buffer (pydyn-python--to-dynamo-node))
-      (pydyn-convert-convert-process-finished)
+      (pydyn-convert-process-finished)
       (pydyn-buffer-save buffer save-buffer-cb))))
 
 
@@ -585,7 +585,7 @@ If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode.
   (interactive (list (pydyn-python--select-file)
                      (pydyn-choose-buffer-save-action "Dynamo")))
   (pydyn-is-python-export-or-error file-path)
-  (pydyn-convert-convert-process-started)
+  (pydyn-convert-process-started)
   (let ((directory (file-name-directory file-path))
         (buffer-before (current-buffer))
         (buffer nil)
@@ -597,7 +597,7 @@ If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode.
             (setq dyn-path (pydyn-python--to-dynamo-node)))
           (unless (equal buffer buffer-before)
             (kill-buffer-if-not-modified buffer)))
-      (pydyn-convert-convert-process-finished)
+      (pydyn-convert-process-finished)
       (pydyn-python--update-message dyn-path)
       (pydyn-buffer-save dyn-path save-buffer-cb))))
 
@@ -623,7 +623,7 @@ If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode.
   "Replace code in Dynamo of python files in DIRECTORY, SAVE-BUFFER-CB last buffer."
   (interactive (list (pydyn-python--select-folder)
                      (pydyn-choose-buffer-save-action "Dynamo")))
-  (pydyn-convert-convert-process-started)
+  (pydyn-convert-process-started)
   (let ((dyn-path nil)
         (buffer-before (current-buffer))
         (buffer nil))
@@ -638,7 +638,7 @@ If NOT-IS-PYTHON-CHECK is non-nil, the buffer is cleaned regardless of the mode.
               (setq dyn-path current-dyn))
             (unless (equal buffer buffer-before)
               (kill-buffer-if-not-modified buffer))))
-      (pydyn-convert-convert-process-finished)
+      (pydyn-convert-process-finished)
       (pydyn-buffer-save dyn-path save-buffer-cb))))
 
 

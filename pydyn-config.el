@@ -167,7 +167,7 @@
 ;;; Load config from file
 
 (defun pydyn-config--plist-get (line)
-  "Return plist frpom properties and values in LINE."
+  "Return plist from properties and values in LINE."
   (let ((plist (list))
         (prop-values (string-split line "\\(, \\)" t)))
     (cl-loop for (prop value)
@@ -253,7 +253,7 @@ If FORCE is non-nil force load and set config."
 
 (defun pydyn-config--prepare-configs (configs)
   "Return CONFIGS in config format.
-Remove invalid configs and set absolute path."
+Remove invalid config and set absolute path."
   (let ((configs (pydyn-config--valid-configs configs)))
     (seq-map #'pydyn-config--set-absolute-path-in configs)))
 
@@ -288,7 +288,7 @@ If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
     (when (and report-message (not (seq-empty-p report-configs)))
       (message "%s:\n%s" report-message
                (pydyn-config--report-message report-configs)))
-    (seq-remove check-func report-configs)))
+    (seq-remove check-func configs)))
 
 
 (defun pydyn-config--check-and-report-equal (configs not-report)
@@ -344,7 +344,7 @@ DIRECTORY is the default directory."
                (format "Select new source root for %S: " file-path)
                (pydyn-config-as-dir-path file-path))))
     (unless (pydyn-config-is-subpath-p path file-path)
-      (user-error "%S is not a subpath of %S" file-path path))
+      (user-error "%S is not a sub-path of %S" file-path path))
     (when (pydyn-config-is-known-source-p path)
       (user-error "%S is already a source config" path))
     path))
@@ -391,7 +391,7 @@ if OFFSET is nil it is set to 5. If WITH_ROOT is non-nil add config of
 
 
 (defun pydyn-config--path-for-completing (config)
-  "Return source path for slection of CONFIG."
+  "Return source path for selection of CONFIG."
   (let ((path (pydyn-config-source-path config))
         (mount-regex "/mnt/\\([a-zA-Z]+\\)"))
     (when (string-match mount-regex path)
@@ -421,7 +421,7 @@ NAME-LENGTH is the length of source names."
 
 
 (defun pydyn-config--select-config-list (&optional with_root)
-  "Return list of source configs for selection.
+  "Return list of source config for selection.
 If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
   (if with_root
       (append pydyn-config--alist (list (pydyn-config-root-source)))
@@ -465,7 +465,7 @@ If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
 
 
 (defun pydyn-config-is-subpath-p (path subpath)
-  "Return non-nil if SUBPATH is subpath of PATH or equal."
+  "Return non-nil if SUBPATH is sub-path of PATH or equal."
   (or (string-prefix-p path subpath)
       (string-equal path subpath)))
 
@@ -477,7 +477,7 @@ If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
 
 
 (defun pydyn-config-is-known-source-p (file-path)
-  "Return non-nil if FILE-PATH is subpath of a `pydyn-config--alist'."
+  "Return non-nil if FILE-PATH is sub-path of a `pydyn-config--alist'."
   (unless pydyn-config--alist
     (pydyn-config-load))
   (unless pydyn-config--alist
@@ -502,7 +502,7 @@ If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
 
 ;;;###autoload
 (defun pydyn-config-remove-source-path (file-path)
-  "Remove source subpath for FILE-PATH if exists, otherwise return FILE-PATH."
+  "Remove source sub-path for FILE-PATH if exists, otherwise return FILE-PATH."
   (let ((config (pydyn-config-by-path file-path)))
     (if config
         (string-remove-prefix (pydyn-config-source-path config) file-path)
