@@ -336,7 +336,8 @@ If AS-STRING is non-nil value contain with surrounding \"."
 If DO-KILL-BUFFER is non-nil buffer is killed after reading nodes."
   (with-current-buffer (pydyn-buffer-by file-path)
     (let ((nodes (pydyn-python-nodes-get)))
-      (pydyn-buffer-save (current-buffer) do-kill-buffer)
+      (pydyn-buffer-save (current-buffer)
+                         (if do-kill-buffer 'kill-buffer nil))
       nodes)))
 
 

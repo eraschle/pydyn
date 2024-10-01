@@ -167,40 +167,64 @@ CALLBACK is applied to clean exported code."
                       export-root ".*py.*" nil))))
 
 
+(defun pydyn-convert--orphan-items (root-path deleted)
+  "Return report of DELETED items in ROOT-PATH."
+  (seq-map
+   (lambda (path)
+     (format "-> %s" (string-remove-prefix
+                      root-path path)))
+   (sort deleted #'string-lessp)))
+
+
+(defun pydyn-convert--orphan-report (kind root-path deleted)
+  "Report DELETED orphan files or folders (KIND) in ROOT-PATH."
+  (unless (seq-empty-p deleted)
+    (let ((kind (if (length> deleted 1) (concat kind "s") kind))
+          (names (pydyn-convert--orphan-items root-path deleted)))
+      (message "Deleted orphan %s in %S:\n%s"
+               kind root-path (string-join names "\n")))))
+
+(defun pydyn-convert--delete-orphan-file (file-path)
+  "Delete FILE-PATH if exist and is python file.
+Return non-nil if file was deleted."
+  (when (and (file-exists-p file-path) (pydyn-is-python? file-path))
+    (delete-file file-path nil) t))
+
+
 (defun pydyn-convert-delete-orphan-folder (dynamo-files)
   "Delete all python folders are not existing in DYNAMO-FILES."
   (let* ((export-folders (pydyn-convert--export-paths-for dynamo-files))
          (export-root (pydyn-convert--root-folder-of export-folders))
-         (python-folders (pydyn-convert--python-folder-in export-root)))
-    (message "Root folder: %s" export-root)
+         (python-folders (pydyn-convert--python-folder-in export-root))
+         (deleted nil))
     (dolist (to-delete (seq-difference python-folders export-folders))
-      (dolist (file (directory-files-recursively to-delete "*.*" t))
-        (delete-file file t))
-      (delete-directory to-delete t)
-      (message "Deleted orphan folder: %s" to-delete))))
+      (dolist (file (directory-files-recursively to-delete "*.py" t))
+        (pydyn-convert--delete-orphan-file file))
+      (delete-directory to-delete)
+      (push to-delete deleted))
+    (pydyn-convert--orphan-report "folder" export-root deleted)))
 
 
-(defun pydyn-convert--clean-orphan (dynamo-nodes)
+(defun pydyn-convert-clean-orphan (dynamo-nodes)
   "Delete python files in FILE-PATH that are not in DYNAMO-NODES."
   (let* ((dynamo-path (plist-get (seq-first dynamo-nodes) :path))
-         (python-files (pydyn-path-python-files-in
-                        (pydyn-path-export-folder dynamo-path)))
-         (node-paths (seq-map 'pydyn-export-path dynamo-nodes)))
+         (export-root (pydyn-path-export-folder dynamo-path))
+         (python-files (pydyn-path-python-files-in export-root))
+         (node-paths (seq-map 'pydyn-export-path dynamo-nodes))
+         (deleted nil))
     (dolist (to-delete (seq-difference python-files node-paths))
-      (when (file-exists-p to-delete)
-        (message "Delete orphan python file: %s" to-delete)
-        (delete-file to-delete nil)))))
+      (when (pydyn-convert--delete-orphan-file to-delete)
+        (push to-delete deleted)))
+    (pydyn-convert--orphan-report "file" export-root deleted)))
 
 
-(defun pydyn-convert-to-python (dynamo-path clean-cb delete-orphan)
+(defun pydyn-convert-to-python (dynamo-path clean-cb)
   "Export all python nodes to python files and apply CLEAN-CB in DYNAMO-PATH.
-Unless last buffer,buffer will be saved and killed.
-If DELETE-ORPHAN is non-nil, delete orphan python files."
-  (let ((last-export nil)
-        (script-nodes (pydyn-python-nodes-in dynamo-path nil)))
-    (when delete-orphan
-      (pydyn-convert--clean-orphan script-nodes))
-    (dolist (node-info script-nodes)
+Unless last buffer,buffer will be saved and killed."
+  (let* ((last-export nil)
+         (do-kill (not (equal dynamo-path buffer-file-name)))
+         (dyn-nodes (pydyn-python-nodes-in dynamo-path do-kill)))
+    (dolist (node-info dyn-nodes)
       (when last-export
         (pydyn-buffer-save last-export 'kill-buffer))
       (setq last-export (pydyn-convert-node-to-python

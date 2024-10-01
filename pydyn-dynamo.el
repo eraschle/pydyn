@@ -30,7 +30,7 @@
 
 (require 'view)
 
-(defcustom pydyn-dynamo-keymap-prefix "C-d"
+(defcustom pydyn-dynamo-keymap-prefix "C-x C-y"
   "The prefix for pydyn-dynamo-mode key bindings."
   :type 'string
   :group 'pydyn)
@@ -138,13 +138,13 @@
   (interactive (list (pydyn-choose-buffer-save-action "Python")))
   (pydyn-is-dynamo-or-error)
   (pydyn-dynamo--ensure-source-config)
-  (pydyn-convert-convert-process-started)
+  (pydyn-convert-process-started)
   (let ((buffer nil))
     (unwind-protect
         (setq buffer (pydyn-convert-node-to-python
                       (pydyn-dynamo--node-info-or-error)
                       'pydyn-python-convert-clean))
-      (pydyn-convert-convert-process-finished)
+      (pydyn-convert-process-finished)
       (pydyn-buffer-save buffer save-buffer-cb))))
 
 
@@ -157,21 +157,23 @@
 
 
 ;;;###autoload
-(defun pydyn-dynamo-script-to-python (file-path save-buffer-cb delete-orphan)
+(defun pydyn-dynamo-script-to-python (file-path delete-orphan save-buffer-cb)
   "Export python node in FILE-PATH and SAVE-BUFFER-CB to export buffer.
 If DELETE-ORPHAN is non-nil delete orphan python files."
   (interactive (list (if (pydyn-is-dynamo? buffer-file-name)
                          (buffer-file-name)
                        (pydyn-dynamo-select-file))
-                     (pydyn-choose-buffer-save-action "Python")
-                     (y-or-n-p "Delete orphan python files? ")))
+                     (y-or-n-p "Delete orphan python files? ")
+                     (pydyn-choose-buffer-save-action "Python")))
   (pydyn-is-dynamo-or-error file-path)
   (pydyn-dynamo--ensure-source-config file-path)
   (pydyn-convert-process-started)
+  (when delete-orphan
+    (pydyn-dynamo--clean-orphan file-path))
   (let ((buffer nil))
     (unwind-protect
         (setq buffer (pydyn-convert-to-python
-                      file-path 'pydyn-python-convert-clean delete-orphan))
+                      file-path 'pydyn-python-convert-clean))
       (pydyn-convert-process-finished)
       (pydyn-buffer-save buffer save-buffer-cb))))
 
@@ -184,24 +186,28 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
 
 
 ;;;###autoload
-(defun pydyn-dynamo-folder-to-python (directory save-buffer-cb delete-orphan)
+(defun pydyn-dynamo-folder-to-python (directory delete-orphan save-buffer-cb)
   "Export all python nodes of Dynamo files in DIRECTORY.
 SAVE-BUFFER-CB last export buffer afterwards.
 If DELETE-ORPHAN is non-nil delete orphan python files."
   (interactive (list (pydyn-dynamo-select-source-for-export)
-                     (pydyn-choose-buffer-save-action "Python")
-                     (y-or-n-p "Delete orphan python files? ")))
+                     (y-or-n-p "Delete orphan python files? ")
+                     (pydyn-choose-buffer-save-action "Python")))
   (pydyn-dynamo--ensure-source-config directory)
   (pydyn-convert-process-started)
-  (let ((buffer nil))
+  (let ((dynamo-files (pydyn-path-dynamo-files-in directory nil))
+        (buffer nil))
+    (when delete-orphan
+      (pydyn-convert-delete-orphan-folder dynamo-files))
     (unwind-protect
-        (dolist (file-path (pydyn-path-dynamo-files-in directory))
+        (dolist (file-path dynamo-files)
           (when buffer
             (pydyn-buffer-save buffer 'kill-buffer))
           (setq buffer (pydyn-convert-to-python
-                        file-path 'pydyn-python-convert-clean delete-orphan))))
-    (pydyn-convert-process-finished)
-    (pydyn-buffer-save buffer save-buffer-cb)))
+                        file-path 'pydyn-python-convert-clean)))
+      (pydyn-convert-process-finished)
+      (pydyn-buffer-save buffer save-buffer-cb))))
+
 
 
 (defun pydyn-dynamo--node-select-of (node-info)
@@ -242,12 +248,12 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
                           :code-line)))
 
 
-(defun pydyn-dynamo--clean-orphan (dynamo-path kill-buffer)
-  "Delete python files of not existing nodes in DYNAMO-PATH.
-If KILL-BUFFER is non-nil kill buffer afterwards."
+(defun pydyn-dynamo--clean-orphan (dynamo-path)
+  "Delete python files of not existing nodes in DYNAMO-PATH."
   (when (pydyn-json-nodes-exists-p dynamo-path)
-    (let ((script-nodes (pydyn-python-nodes-in dynamo-path kill-buffer)))
-      (pydyn-convert--clean-orphan script-nodes))))
+    (let* ((do-kill (not (equal dynamo-path buffer-file-name)))
+           (nodes (pydyn-python-nodes-in dynamo-path do-kill)))
+      (pydyn-convert-clean-orphan nodes))))
 
 
 ;;;###autoload
@@ -259,8 +265,15 @@ If KILL-BUFFER is non-nil kill buffer afterwards."
   (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
     (pydyn-convert-process-started)
     (unwind-protect
-        (pydyn-dynamo--clean-orphan file-path (not (pydyn-is-dynamo? buffer-file-name)))
+        (pydyn-dynamo--clean-orphan file-path)
       (pydyn-convert-process-finished))))
+
+(defun pydyn-dynamo--clean-orphan-in-directory (directory)
+  "Delete all python files of not existing nodes from Dynamo files in DIRECTORY."
+  (let ((dynamo-files (pydyn-path-dynamo-files-in directory t)))
+    (pydyn-convert-delete-orphan-folder dynamo-files)
+    (dolist (file-path dynamo-files)
+      (pydyn-dynamo--clean-orphan file-path))))
 
 
 ;;;###autoload
@@ -269,13 +282,31 @@ If KILL-BUFFER is non-nil kill buffer afterwards."
   (interactive (list (pydyn-config-select-directory
                       "Delete orphan python code from dynamo files in? "
                       (pydyn-config-select-config-path))))
-  (when (y-or-n-p "Are you sure you want to delete orphan python files? ")
+  (when (y-or-n-p "Are you sure to delete orphan python files in directory?")
     (pydyn-convert-process-started)
     (unwind-protect
-        (let ((dynamo-files (pydyn-path-dynamo-files-in directory t)))
-          (pydyn-convert-delete-orphan-folder dynamo-files)
-          (dolist (file-path dynamo-files)
-            (pydyn-dynamo--clean-orphan file-path t)))
+        (pydyn-dynamo--clean-orphan-in-directory directory)
+      (pydyn-convert-process-finished))))
+
+
+;;;###autoload
+(defun pydyn-dynamo-clean-orphan-code-source (source)
+  "Delete all python files of not existing nodes from Dynamo files in SOURCE."
+  (interactive (list (pydyn-config-select-config-path 'with-root)))
+  (pydyn-dynamo-clean-orphan-code-folder
+   (pydyn-config-source-path source)))
+
+
+;;;###autoload
+(defun pydyn-dynamo-clean-orphan-code-all-source ()
+  "Delete all python files of not existing nodes from Dynamo files in all sources."
+  (interactive)
+  (when (y-or-n-p "Are you sure to delete orphan python files in all sources? ")
+    (pydyn-convert-process-started)
+    (unwind-protect
+        (dolist (source (pydyn-config-sources-get 'with-root))
+          (pydyn-dynamo--clean-orphan-in-directory
+           (pydyn-config-source-path source)))
       (pydyn-convert-process-finished))))
 
 

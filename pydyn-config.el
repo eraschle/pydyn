@@ -258,11 +258,11 @@ Remove invalid config and set absolute path."
     (seq-map #'pydyn-config--set-absolute-path-in configs)))
 
 
-(defun pydyn-config-source-names (&optional configs with_root)
+(defun pydyn-config-source-names (&optional configs with-root)
   "Return source names in CONFIGS or `pydyn-config--alist'.
-If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
+If WITH-ROOT is non-nil add config of `pydyn-config-export-path'."
   (seq-map (lambda (config) (pydyn-config-source-name config))
-           (or configs (pydyn-config--select-config-list with_root))))
+           (or configs (pydyn-config-sources-get with-root))))
 
 
 (defun pydyn-config--report-message-for (config name-length)
@@ -382,12 +382,12 @@ DIRECTORY is the default directory."
     (pydyn-config-write)))
 
 
-(defun pydyn-config--source-max-length (&optional configs offset with_root)
+(defun pydyn-config--source-max-length (&optional configs offset with-root)
   "Return max length of source names in CONFIGS with optional OFFSET.
-if OFFSET is nil it is set to 5. If WITH_ROOT is non-nil add config of
+if OFFSET is nil it is set to 5. If WITH-ROOT is non-nil add config of
 `pydyn-config-export-path'."
   (+ (or offset 2)
-     (seq-max (seq-map #'length (pydyn-config-source-names configs with_root)))))
+     (seq-max (seq-map #'length (pydyn-config-source-names configs with-root)))))
 
 
 (defun pydyn-config--path-for-completing (config)
@@ -420,47 +420,47 @@ NAME-LENGTH is the length of source names."
   (pydyn-config-source-name-equal? config (pydyn-config-root-source)))
 
 
-(defun pydyn-config--select-config-list (&optional with_root)
+(defun pydyn-config-sources-get (&optional with-root)
   "Return list of source config for selection.
-If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
-  (if with_root
+If WITH-ROOT is non-nil add config of `pydyn-config-export-path'."
+  (if with-root
       (append pydyn-config--alist (list (pydyn-config-root-source)))
     pydyn-config--alist))
 
 
-(defun pydyn-config--select-list (&optional offset with_root)
+(defun pydyn-config--select-list (&optional offset with-root)
   "Return list of source names with optional OFFSET.
-If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
-  (let ((name-length (pydyn-config--source-max-length nil offset with_root)))
+If WITH-ROOT is non-nil add config of `pydyn-config-export-path'."
+  (let ((name-length (pydyn-config--source-max-length nil offset with-root)))
     (seq-map (lambda (source)
                (pydyn-config--completing-read-get source name-length))
-             (pydyn-config--select-config-list with_root))))
+             (pydyn-config-sources-get with-root))))
 
 
-(defun pydyn-config-by-name (name &optional with_root)
+(defun pydyn-config-by-name (name &optional with-root)
   "Return source config plist by NAME.
-If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
+If WITH-ROOT is non-nil add config of `pydyn-config-export-path'."
   (seq-find (lambda (source) (string= name (pydyn-config-source-name source)))
-            (pydyn-config--select-config-list with_root)))
+            (pydyn-config-sources-get with-root)))
 
 
 ;;;###autoload
-(defun pydyn-config-select-config (&optional with_root)
+(defun pydyn-config-select-config (&optional with-root)
   "Return source config plist selected by the user.
-If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
+If WITH-ROOT is non-nil add config of `pydyn-config-export-path'."
   (let ((config (completing-read
                  "Select source: "
-                 (pydyn-config--select-list nil with_root)
+                 (pydyn-config--select-list nil with-root)
                  nil t)))
     (pydyn-config-by-name (seq-first (string-split config))
-                          with_root)))
+                          with-root)))
 
 
 ;;;###autoload
-(defun pydyn-config-select-config-path (&optional with_root)
+(defun pydyn-config-select-config-path (&optional with-root)
   "Return source config plist selected by the user.
-If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
-  (let ((config (pydyn-config-select-config with_root)))
+If WITH-ROOT is non-nil add config of `pydyn-config-export-path'."
+  (let ((config (pydyn-config-select-config with-root)))
     (pydyn-config-source-path config)))
 
 
@@ -482,7 +482,7 @@ If WITH_ROOT is non-nil add config of `pydyn-config-export-path'."
     (pydyn-config-load))
   (unless pydyn-config--alist
     (user-error "No config exists"))
-  (pydyn-config-by-path file-path))
+  (pydyn-config-by-path (pydyn-config-as-dir-path file-path)))
 
 
 (defun pydyn-config-by-path (file-path)
