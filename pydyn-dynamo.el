@@ -30,7 +30,7 @@
 
 (require 'view)
 
-(defcustom pydyn-dynamo-keymap-prefix "C-x C-y"
+(defcustom pydyn-dynamo-keymap-prefix "C-x y d"
   "The prefix for pydyn-dynamo-mode key bindings."
   :type 'string
   :group 'pydyn)

@@ -33,7 +33,7 @@
 (require 'rect)
 
 
-(defcustom pydyn-python-keymap-prefix "C-p"
+(defcustom pydyn-python-keymap-prefix "C-x y p"
   "The prefix for pydyn-python-mode key bindings."
   :type 'string
   :group 'pydyn)
