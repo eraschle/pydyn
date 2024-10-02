@@ -268,6 +268,7 @@ If DELETE-ORPHAN is non-nil delete orphan python files."
         (pydyn-dynamo--clean-orphan file-path)
       (pydyn-convert-process-finished))))
 
+
 (defun pydyn-dynamo--clean-orphan-in-directory (directory)
   "Delete all python files of not existing nodes from Dynamo files in DIRECTORY."
   (let ((dynamo-files (pydyn-path-dynamo-files-in directory t)))
@@ -415,6 +416,7 @@ Functions are called with no arguments."
 
 (add-hook 'pydyn-dynamo-mode-hook 'pydyn-dynamo-mode-h)
 
+(add-to-list 'auto-mode-alist '("\\.\\(dyn\\|dyf\\)\\'" . json-mode))
 
 (provide 'pydyn-dynamo)
 ;;; pydyn-dynamo.el ends here
